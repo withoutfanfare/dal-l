@@ -21,6 +21,7 @@
     "core:event:allow-listen",
     "process:allow-restart",
     "process:allow-exit",
-    "deep-link:default"
+    "deep-link:default",
+    "updater:default"
   ]
 }
