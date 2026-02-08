@@ -36,7 +36,7 @@ const { toggleSection, isSectionExpanded } = useSidebar()
 
         <!-- Children -->
         <SidebarSection
-          v-show="isSectionExpanded(node.slug)"
+          v-if="isSectionExpanded(node.slug)"
           :nodes="node.children"
           :level="props.level + 1"
         />

@@ -23,6 +23,5 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
-  "references": []
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
 }

@@ -31,7 +31,6 @@ pub struct Document {
     pub sort_order: i32,
     pub parent_slug: String,
     pub content_html: String,
-    pub content_raw: String,
     pub path: String,
 }
 
@@ -50,16 +49,6 @@ pub struct Tag {
     pub count: i32,
 }
 
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-pub struct Chunk {
-    pub id: i32,
-    pub document_id: i32,
-    pub chunk_index: i32,
-    pub content_text: String,
-    pub heading_context: String,
-}
-
 #[derive(Debug, Serialize, Clone)]
 pub struct ScoredChunk {
     pub id: i32,
@@ -76,6 +65,7 @@ pub struct Settings {
     pub anthropic_api_key: Option<String>,
     pub ollama_base_url: Option<String>,
     pub preferred_provider: Option<String>,
+    pub anthropic_model: Option<String>,
 }
 
 impl Default for Settings {
@@ -85,7 +75,14 @@ impl Default for Settings {
             anthropic_api_key: None,
             ollama_base_url: Some("http://localhost:11434".to_string()),
             preferred_provider: None,
+            anthropic_model: None,
         }
+    }
+}
+
+impl Settings {
+    pub fn anthropic_model(&self) -> &str {
+        self.anthropic_model.as_deref().unwrap_or("claude-sonnet-4-20250514")
     }
 }
 
@@ -97,9 +94,3 @@ pub enum AiProvider {
     Ollama,
 }
 
-#[derive(Debug, Serialize, serde::Deserialize, Clone)]
-#[allow(dead_code)]
-pub struct AiMessage {
-    pub role: String,
-    pub content: String,
-}

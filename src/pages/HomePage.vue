@@ -15,7 +15,8 @@ onMounted(() => {
 function openCollection(collectionId: string) {
   const { setActiveCollection } = useCollections()
   setActiveCollection(collectionId)
-  router.push('/')
+  // Navigate to the collection root so the sidebar expands with its content
+  router.push(`/${collectionId}`)
 }
 </script>
 

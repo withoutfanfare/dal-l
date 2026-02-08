@@ -10,6 +10,7 @@ export interface NavigationTree extends NavigationNode {
 const cache = new Map<string, NavigationNode[]>()
 const nodes = ref<NavigationNode[]>([])
 const loading = ref(false)
+const tree = ref<NavigationTree[]>([])
 
 function buildTree(flat: NavigationNode[]): NavigationTree[] {
   const slugMap = new Map<string, NavigationTree>()
@@ -32,34 +33,36 @@ function buildTree(flat: NavigationNode[]): NavigationTree[] {
   return roots
 }
 
-const tree = ref<NavigationTree[]>([])
+async function loadNavigation(collectionId: string) {
+  if (!collectionId) return
 
-export function useNavigation() {
-  const { activeCollectionId } = useCollections()
-
-  async function loadNavigation(collectionId: string) {
-    if (!collectionId) return
-
-    if (cache.has(collectionId)) {
-      nodes.value = cache.get(collectionId)!
-      tree.value = buildTree(nodes.value)
-      return
-    }
-
-    loading.value = true
-    try {
-      const result = await getNavigation(collectionId)
-      cache.set(collectionId, result)
-      nodes.value = result
-      tree.value = buildTree(result)
-    } finally {
-      loading.value = false
-    }
+  if (cache.has(collectionId)) {
+    nodes.value = cache.get(collectionId)!
+    tree.value = buildTree(nodes.value)
+    return
   }
 
-  watch(activeCollectionId, (id) => {
-    if (id) loadNavigation(id)
-  }, { immediate: true })
+  loading.value = true
+  try {
+    const result = await getNavigation(collectionId)
+    cache.set(collectionId, result)
+    nodes.value = result
+    tree.value = buildTree(result)
+  } finally {
+    loading.value = false
+  }
+}
 
-  return { nodes, tree, loading, loadNavigation }
+// Module-scope watcher — registered once regardless of how many times useNavigation() is called
+const { activeCollectionId } = useCollections()
+watch(activeCollectionId, (id) => {
+  if (id) loadNavigation(id)
+}, { immediate: true })
+
+function clearCache() {
+  cache.clear()
+}
+
+export function useNavigation() {
+  return { nodes, tree, loading, loadNavigation, clearCache }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSettings } from '@/composables/useSettings'
+import { registerKeydownHandler } from '@/composables/useKeydownDispatcher'
 import ProviderConfig from './ProviderConfig.vue'
 import type { AiProvider, Settings } from '@/lib/types'
 
@@ -20,6 +21,7 @@ const draft = ref<Settings>({
   anthropic_api_key: null,
   ollama_base_url: null,
   preferred_provider: null,
+  anthropic_model: null,
 })
 
 const openaiRef = ref<InstanceType<typeof ProviderConfig> | null>(null)
@@ -58,7 +60,7 @@ async function handleTestProvider(provider: AiProvider) {
   const configRef = refMap[provider].value
   if (!configRef) return
 
-  configRef.testing = true
+  // Note: directly accessing child refs for testing state — acceptable for tightly coupled parent-child
   configRef.testResult = null
 
   try {
@@ -71,19 +73,20 @@ async function handleTestProvider(provider: AiProvider) {
   }
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.open) {
-    e.preventDefault()
-    handleCancel()
-  }
-}
+let unregister: (() => void) | null = null
 
 onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
+  unregister = registerKeydownHandler(30, (e) => {
+    if (e.key === 'Escape' && props.open) {
+      e.preventDefault()
+      handleCancel()
+      return true
+    }
+  })
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKeydown)
+  unregister?.()
 })
 </script>
 

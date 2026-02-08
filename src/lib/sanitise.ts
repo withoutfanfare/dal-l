@@ -22,10 +22,11 @@ purify.setConfig({
   ALLOWED_ATTR: [
     'href', 'target', 'rel',
     'src', 'alt', 'width', 'height',
-    'class', 'style', 'id',
+    'class', 'id',
     'tabindex',
     'colspan', 'rowspan', 'scope',
     'aria-label', 'aria-hidden', 'role',
+    'style',
   ],
   ALLOW_DATA_ATTR: false,
 })

@@ -1,14 +1,16 @@
 use crate::ai;
-use crate::db::DbState;
+use crate::db::{DbState, HttpClient};
 use crate::models::*;
 use crate::settings;
 use tauri::{AppHandle, State};
 
+// Note: Mutex poisoning is mitigated by panic = "abort" in release profile.
+// rusqlite::Connection is not Sync, so Mutex is required over RwLock.
 #[tauri::command]
 pub fn get_collections(db: State<DbState>) -> Result<Vec<Collection>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare(
+        .prepare_cached(
             "SELECT id, name, icon, description, sort_order FROM collections ORDER BY sort_order",
         )
         .map_err(|e| e.to_string())?;
@@ -35,7 +37,7 @@ pub fn get_navigation(
 ) -> Result<Vec<NavigationNode>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare(
+        .prepare_cached(
             "SELECT id, collection_id, slug, parent_slug, title, sort_order, level, has_children \
              FROM navigation_tree \
              WHERE collection_id = ? \
@@ -67,7 +69,7 @@ pub fn get_document(db: State<DbState>, slug: String) -> Result<Document, String
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.query_row(
         "SELECT id, collection_id, slug, title, section, sort_order, parent_slug, \
-         content_html, content_raw, path \
+         content_html, path \
          FROM documents WHERE slug = ?",
         [&slug],
         |row| {
@@ -80,8 +82,7 @@ pub fn get_document(db: State<DbState>, slug: String) -> Result<Document, String
                 sort_order: row.get(5)?,
                 parent_slug: row.get(6)?,
                 content_html: row.get(7)?,
-                content_raw: row.get(8)?,
-                path: row.get(9)?,
+                path: row.get(8)?,
             })
         },
     )
@@ -98,9 +99,14 @@ pub fn search_documents(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(20);
 
+    let sanitised_query = ai::sanitise_fts5_query(&query);
+    if sanitised_query.is_empty() {
+        return Ok(vec![]);
+    }
+
     let results = if let Some(ref cid) = collection_id {
         let mut stmt = conn
-            .prepare(
+            .prepare_cached(
                 "SELECT d.slug, d.title, d.section, d.collection_id, \
                  snippet(documents_fts, 1, '<mark>', '</mark>', '...', 30) as snippet \
                  FROM documents_fts \
@@ -111,7 +117,7 @@ pub fn search_documents(
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(rusqlite::params![&query, cid, limit], |row| {
+            .query_map(rusqlite::params![&sanitised_query, cid, limit], |row| {
                 Ok(SearchResult {
                     slug: row.get(0)?,
                     title: row.get(1)?,
@@ -125,7 +131,7 @@ pub fn search_documents(
             .map_err(|e| e.to_string())
     } else {
         let mut stmt = conn
-            .prepare(
+            .prepare_cached(
                 "SELECT d.slug, d.title, d.section, d.collection_id, \
                  snippet(documents_fts, 1, '<mark>', '</mark>', '...', 30) as snippet \
                  FROM documents_fts \
@@ -136,7 +142,7 @@ pub fn search_documents(
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(rusqlite::params![&query, limit], |row| {
+            .query_map(rusqlite::params![&sanitised_query, limit], |row| {
                 Ok(SearchResult {
                     slug: row.get(0)?,
                     title: row.get(1)?,
@@ -162,7 +168,7 @@ pub fn get_tags(
 
     let results = if let Some(ref cid) = collection_id {
         let mut stmt = conn
-            .prepare(
+            .prepare_cached(
                 "SELECT t.tag, COUNT(dt.document_id) as count \
                  FROM tags t \
                  JOIN document_tags dt ON dt.tag_id = t.id \
@@ -184,7 +190,7 @@ pub fn get_tags(
             .map_err(|e| e.to_string())
     } else {
         let mut stmt = conn
-            .prepare(
+            .prepare_cached(
                 "SELECT t.tag, COUNT(dt.document_id) as count \
                  FROM tags t \
                  JOIN document_tags dt ON dt.tag_id = t.id \
@@ -238,29 +244,47 @@ pub fn save_settings(app: AppHandle, new_settings: Settings) -> Result<(), Strin
         ),
         ollama_base_url: new_settings.ollama_base_url,
         preferred_provider: new_settings.preferred_provider,
+        anthropic_model: new_settings.anthropic_model,
     };
 
     settings::save_settings_to_store(&app, &merged)
 }
 
-/// If the incoming key contains "..." it is a masked value — keep the existing key.
+/// If the incoming key matches the masked format (prefix...suffix), keep the existing key.
 fn merge_key(incoming: &Option<String>, existing: &Option<String>) -> Option<String> {
     match incoming {
-        Some(k) if k.contains("...") => existing.clone(),
+        Some(k) if is_masked_key(k) => existing.clone(),
         Some(k) if k.is_empty() => None,
         other => other.clone(),
     }
 }
 
+/// Check whether a string matches the output format of `mask_key`:
+/// either all asterisks (short keys) or chars...chars (longer keys).
+fn is_masked_key(value: &str) -> bool {
+    // All asterisks — masked short key
+    if !value.is_empty() && value.chars().all(|c| c == '*') {
+        return true;
+    }
+    // Pattern: <prefix>...<suffix> where prefix and suffix are non-empty
+    if let Some(dot_pos) = value.find("...") {
+        let prefix = &value[..dot_pos];
+        let suffix = &value[dot_pos + 3..];
+        return !prefix.is_empty() && !suffix.is_empty();
+    }
+    false
+}
+
 #[tauri::command]
-pub async fn test_provider(app: AppHandle, provider: AiProvider) -> Result<String, String> {
+pub async fn test_provider(app: AppHandle, http_client: State<'_, HttpClient>, provider: AiProvider) -> Result<String, String> {
     let stored = settings::load_settings(&app)?;
-    ai::test_provider_connection(&stored, &provider).await
+    ai::test_provider_connection(&http_client.0, &stored, &provider).await
 }
 
 #[tauri::command]
 pub async fn ask_question(
     app: AppHandle,
+    http_client: State<'_, HttpClient>,
     question: String,
     provider: Option<AiProvider>,
 ) -> Result<(), String> {
@@ -272,7 +296,15 @@ pub async fn ask_question(
             stored
                 .preferred_provider
                 .as_ref()
-                .and_then(|p| serde_json::from_value(serde_json::Value::String(p.clone())).ok())
+                .and_then(|p| {
+                    match serde_json::from_value::<AiProvider>(serde_json::Value::String(p.clone())) {
+                        Ok(provider) => Some(provider),
+                        Err(e) => {
+                            eprintln!("Warning: invalid preferred_provider value '{}': {}", p, e);
+                            None
+                        }
+                    }
+                })
         })
         .unwrap_or_else(|| {
             // Auto-detect: prefer OpenAI if key set, then Anthropic, then Ollama
@@ -286,8 +318,11 @@ pub async fn ask_question(
         });
 
     // Run the RAG pipeline — errors are emitted as events
-    if let Err(e) = ai::ask_question_rag(app.clone(), question, provider).await {
-        let _ = tauri::Emitter::emit(&app, "ai-response-error", &e);
+    if let Err(e) = ai::ask_question_rag(http_client.0.clone(), app.clone(), question, provider).await {
+        if let Err(emit_err) = tauri::Emitter::emit(&app, "ai-response-error", &e) {
+            eprintln!("Warning: failed to emit ai-response-error event: {}. Original error: {}", emit_err, e);
+        }
+        return Err(e);
     }
 
     Ok(())
@@ -296,6 +331,7 @@ pub async fn ask_question(
 #[tauri::command]
 pub async fn get_embedding(
     app: AppHandle,
+    http_client: State<'_, HttpClient>,
     text: String,
     provider: Option<AiProvider>,
 ) -> Result<Vec<f32>, String> {
@@ -309,5 +345,5 @@ pub async fn get_embedding(
         }
     });
 
-    ai::generate_embedding(&stored, &provider, &text).await
+    ai::generate_embedding(&http_client.0, &stored, &provider, &text).await
 }

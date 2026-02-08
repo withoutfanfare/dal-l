@@ -33,13 +33,16 @@ pub fn mask_settings(settings: &Settings) -> Settings {
         anthropic_api_key: settings.anthropic_api_key.as_ref().map(|k| mask_key(k)),
         ollama_base_url: settings.ollama_base_url.clone(),
         preferred_provider: settings.preferred_provider.clone(),
+        anthropic_model: settings.anthropic_model.clone(),
     }
 }
 
 fn mask_key(key: &str) -> String {
-    if key.len() <= 8 {
-        return "*".repeat(key.len());
+    let char_count = key.chars().count();
+    if char_count <= 8 {
+        return "*".repeat(char_count);
     }
-    let visible = &key[..4];
-    format!("{}...{}", visible, &key[key.len() - 4..])
+    let prefix: String = key.chars().take(4).collect();
+    let suffix: String = key.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    format!("{}...{}", prefix, suffix)
 }

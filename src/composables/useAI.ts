@@ -10,6 +10,7 @@ const response = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
 const activeProvider = ref<AiProvider | null>(null)
+const unlistenFns = ref<(() => void)[]>([])
 
 export function useAI() {
   const { isConfigured } = useSettings()
@@ -39,32 +40,39 @@ export function useAI() {
   async function ask(text: string, provider?: AiProvider) {
     if (!text.trim()) return
 
+    // Cancel any previous listeners before registering new ones
+    unlistenFns.value.forEach(fn => fn())
+    unlistenFns.value = []
+
     question.value = text.trim()
     response.value = ''
     loading.value = true
     error.value = null
     activeProvider.value = provider ?? null
 
-    // Set up event listeners before sending the question
-    const unlistenChunk = await listen<string>('ai-response-chunk', (event) => {
-      response.value += event.payload
-    })
+    // Register all listeners concurrently before sending the question
+    const [unlistenChunk, unlistenDone, unlistenError] = await Promise.all([
+      listen<string>('ai-response-chunk', (event) => {
+        response.value += event.payload
+      }),
+      listen('ai-response-done', () => {
+        loading.value = false
+        cleanup()
+      }),
+      listen<string>('ai-response-error', (event) => {
+        error.value = event.payload
+        loading.value = false
+        cleanup()
+      }),
+    ])
 
-    const unlistenDone = await listen('ai-response-done', () => {
-      loading.value = false
-      cleanup()
-    })
-
-    const unlistenError = await listen<string>('ai-response-error', (event) => {
-      error.value = event.payload
-      loading.value = false
-      cleanup()
-    })
+    unlistenFns.value = [unlistenChunk, unlistenDone, unlistenError]
 
     function cleanup() {
       unlistenChunk()
       unlistenDone()
       unlistenError()
+      unlistenFns.value = []
     }
 
     try {

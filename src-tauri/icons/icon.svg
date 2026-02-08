@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">dalil app icon</title>
+  <desc id="desc">Rounded square gradient background with a bold D monogram and accent dot.</desc>
+  <defs>
+    <linearGradient id="bg" x1="128" y1="128" x2="896" y2="896" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0A6A70"/>
+      <stop offset="0.55" stop-color="#0E5B89"/>
+      <stop offset="1" stop-color="#183B70"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(312 248) rotate(40) scale(600 500)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#glow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="318" y="244" width="92" height="536" rx="46" fill="#F8FAFC"/>
+    <path d="M410 286H536C673 286 780 382 780 512C780 642 673 738 536 738H410V654H536C625 654 700 593 700 512C700 431 625 370 536 370H410V286Z" fill="#F8FAFC"/>
+    <circle cx="700" cy="300" r="42" fill="#F6C453"/>
+  </g>
+</svg>

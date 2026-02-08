@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getDocument } from '@/lib/api'
 import type { Document } from '@/lib/types'
 import { useCollections } from '@/composables/useCollections'
@@ -10,11 +10,11 @@ import Breadcrumbs from '@/components/content/Breadcrumbs.vue'
 import TableOfContents from '@/components/content/TableOfContents.vue'
 
 const route = useRoute()
+const router = useRouter()
 const { setActiveCollection } = useCollections()
 
 const document = ref<Document | null>(null)
 const loading = ref(false)
-const error = ref<string | null>(null)
 
 async function fetchDocument() {
   const slug = Array.isArray(route.params.slug)
@@ -26,7 +26,6 @@ async function fetchDocument() {
   if (!slug || !collection) return
 
   loading.value = true
-  error.value = null
 
   try {
     // Construct the full slug: collection/slug
@@ -36,10 +35,10 @@ async function fetchDocument() {
 
     // Update window title
     window.document.title = `${document.value.title} \u2014 dal\u012Bl`
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load document'
-    document.value = null
-    window.document.title = 'dal\u012Bl'
+  } catch {
+    try { localStorage.removeItem('dalil:last-path') } catch { /* ignore */ }
+    router.replace('/')
+    return
   } finally {
     loading.value = false
   }
@@ -58,12 +57,6 @@ watch(
       <!-- Loading state -->
       <div v-if="loading" class="py-16 text-center text-text-secondary">
         Loading...
-      </div>
-
-      <!-- Error state -->
-      <div v-else-if="error" class="py-16 text-center">
-        <p class="text-text-secondary mb-2">Could not load document</p>
-        <p class="text-sm text-text-secondary/70">{{ error }}</p>
       </div>
 
       <!-- Document -->

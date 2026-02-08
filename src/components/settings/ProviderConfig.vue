@@ -22,7 +22,6 @@ const testResult = ref<{ success: boolean; message: string } | null>(null)
 
 async function handleTest() {
   testing.value = true
-  testResult.value = null
   emit('test')
 }
 

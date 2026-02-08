@@ -14,15 +14,21 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-shell = "2"
-tauri-plugin-store = "2"
+tauri-plugin-store = "2" # Rust-only — no JS binding needed as store is only accessed from backend
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.33", features = ["bundled", "vtab"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-window-state = "2.4.1"
+tauri-plugin-deep-link = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", features = ["NSData"] }
 
 [profile.release]
 opt-level = 3

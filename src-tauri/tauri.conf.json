@@ -1,6 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-schema/main/tauri.conf.json",
-  "productName": "dalil",
+  "$schema": "./gen/schemas/desktop-schema.json",
+  "productName": "Dalil",
   "version": "0.1.0",
   "identifier": "com.dalil.app",
   "build": {
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "dalil",
+        "title": "Dalil",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; script-src 'self'; connect-src 'self' https: http://localhost:*; font-src 'self' data:"
     }
   },
   "bundle": {
@@ -37,16 +37,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../dalil.db"
-    ]
+    "resources": {
+      "../dalil.db": "./"
+    }
   },
   "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/your-org/dalil/releases/latest/download/latest.json"
-      ],
-      "pubkey": ""
+    "deep-link": {
+      "desktop": {
+        "schemes": ["dalil"]
+      }
     }
   }
 }

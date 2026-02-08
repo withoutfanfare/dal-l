@@ -106,6 +106,17 @@ body {
   font-size: inherit;
 }
 
+/* Shiki dual-theme token colours (class-based dark mode) */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+}
+
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark);
+}
+
 /* Tables */
 .prose table {
   font-size: 14px;
@@ -168,6 +179,37 @@ body {
   transition: width 200ms ease-out;
 }
 
+/* Sidebar resize drag handle */
+.sidebar-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 30;
+  margin-left: -2px;
+  margin-right: -2px;
+  transition: background-color 150ms ease;
+}
+
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-active {
+  background-color: var(--color-accent);
+  opacity: 0.4;
+}
+
+.sidebar-resize-active {
+  opacity: 0.6;
+}
+
 /* Page content fade transition */
 .page-enter-active,
 .page-leave-active {
@@ -181,17 +223,15 @@ body {
 /* Sidebar section expand/collapse */
 .section-enter-active,
 .section-leave-active {
-  transition: all 200ms ease;
+  transition: opacity 150ms ease;
   overflow: hidden;
 }
 .section-enter-from,
 .section-leave-to {
-  max-height: 0;
   opacity: 0;
 }
 .section-enter-to,
 .section-leave-from {
-  max-height: 500px;
   opacity: 1;
 }
 
@@ -241,4 +281,139 @@ mark {
 .prose .heading-anchor:hover {
   opacity: 1;
   color: var(--color-accent);
+}
+
+.prose .heading-anchor-copied {
+  opacity: 1;
+  color: #16a34a;
+  transition: color 150ms ease;
+}
+
+.prose .heading-anchor-copied::after {
+  content: 'Copied';
+  position: absolute;
+  left: calc(100% + 0.35em);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 500;
+  color: #16a34a;
+  white-space: nowrap;
+  animation: fade-in-out 1.5s ease forwards;
+}
+
+@keyframes fade-in-out {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---- Microanimations ---- */
+
+/* Sidebar links */
+nav a,
+nav button {
+  transition: background-color 150ms ease, color 150ms ease, transform 100ms ease;
+}
+
+nav a:active,
+nav button:active {
+  transform: scale(0.98);
+}
+
+/* Toolbar buttons */
+[style*="no-drag"] button {
+  transition: background-color 150ms ease, color 150ms ease, transform 80ms ease;
+}
+
+[style*="no-drag"] button:active {
+  transform: scale(0.94);
+}
+
+/* Content links */
+.prose a {
+  transition: color 150ms ease;
+}
+
+/* Fade-in for main content — only on initial mount via data attribute */
+@keyframes content-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.prose[data-enter] {
+  animation: content-fade-in 200ms ease-out;
+}
+
+/* ---- Ambient background blobs ---- */
+
+.ambient-blobs {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.18;
+  will-change: transform;
+  contain: strict;
+}
+
+.dark .ambient-blob {
+  opacity: 0.10;
+}
+
+/* Pause blob animations when the window is not visible */
+.page-hidden .ambient-blob {
+  animation-play-state: paused;
+}
+
+.blob-1 {
+  width: 600px;
+  height: 600px;
+  background: var(--color-accent);
+  top: -10%;
+  right: -5%;
+  animation: blob-drift-1 25s ease-in-out infinite;
+}
+
+.blob-2 {
+  width: 500px;
+  height: 500px;
+  background: #8B5CF6;
+  bottom: -8%;
+  left: -5%;
+  animation: blob-drift-2 30s ease-in-out infinite;
+}
+
+.blob-3 {
+  width: 400px;
+  height: 400px;
+  background: #06B6D4;
+  top: 40%;
+  left: 30%;
+  animation: blob-drift-3 20s ease-in-out infinite;
+}
+
+@keyframes blob-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(-40px, 30px) scale(1.05); }
+  66%      { transform: translate(20px, -20px) scale(0.95); }
+}
+
+@keyframes blob-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(30px, -40px) scale(1.08); }
+  66%      { transform: translate(-20px, 20px) scale(0.92); }
+}
+
+@keyframes blob-drift-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(-30px, 30px) scale(1.1); }
 }

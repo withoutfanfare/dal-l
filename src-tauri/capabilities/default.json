@@ -19,8 +19,8 @@
     "store:allow-reset",
     "core:event:allow-emit",
     "core:event:allow-listen",
-    "updater:default",
     "process:allow-restart",
-    "process:allow-exit"
+    "process:allow-exit",
+    "deep-link:default"
   ]
 }

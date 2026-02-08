@@ -3,25 +3,67 @@ use crate::models::{AiProvider, ScoredChunk, Settings};
 use rusqlite::params;
 use serde::Deserialize;
 use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
+
+/// Cached result of whether the chunks_fts table exists. The DB is read-only
+/// so the schema never changes at runtime — safe to check once and reuse.
+static HAS_CHUNKS_FTS: OnceLock<bool> = OnceLock::new();
+
+/// Cached Ollama availability status with a 30-second TTL.
+static OLLAMA_AVAILABLE_CACHE: Mutex<Option<(bool, Instant)>> = Mutex::new(None);
+const OLLAMA_CACHE_TTL_SECS: u64 = 30;
+
+// -- FTS5 query sanitisation --
+
+/// Sanitise user input for FTS5 MATCH queries by wrapping each term in double quotes.
+/// This prevents FTS5 special characters (*, -, ^, etc.) from being interpreted as operators.
+pub(crate) fn sanitise_fts5_query(input: &str) -> String {
+    input
+        .split_whitespace()
+        .map(|term| {
+            let is_prefix = term.ends_with('*');
+            let base = if is_prefix {
+                &term[..term.len() - 1]
+            } else {
+                term
+            };
+            // Strip any characters that could break out of double-quoted FTS5 tokens
+            let clean: String = base.chars().filter(|c| *c != '"').collect();
+            if clean.is_empty() {
+                return String::new();
+            }
+            if is_prefix {
+                // Place * outside quotes for valid FTS5 prefix matching
+                format!("\"{}\"*", clean)
+            } else {
+                format!("\"{}\"", clean)
+            }
+        })
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
 
 // -- Embedding generation --
 
 /// Generate an embedding vector for the given text using the configured provider.
 pub async fn generate_embedding(
+    client: &reqwest::Client,
     settings: &Settings,
     provider: &AiProvider,
     text: &str,
 ) -> Result<Vec<f32>, String> {
     match provider {
-        AiProvider::Openai => generate_openai_embedding(settings, text).await,
-        AiProvider::Ollama => generate_ollama_embedding(settings, text).await,
+        AiProvider::Openai => generate_openai_embedding(client, settings, text).await,
+        AiProvider::Ollama => generate_ollama_embedding(client, settings, text).await,
         // Anthropic has no embedding API; fall back to Ollama, then error
         AiProvider::Anthropic => {
-            if is_ollama_available(settings).await {
-                generate_ollama_embedding(settings, text).await
+            if is_ollama_available(client, settings).await {
+                generate_ollama_embedding(client, settings, text).await
             } else if settings.openai_api_key.is_some() {
-                generate_openai_embedding(settings, text).await
+                generate_openai_embedding(client, settings, text).await
             } else {
                 Err("Anthropic does not provide an embedding API. Please configure Ollama or OpenAI for embeddings.".to_string())
             }
@@ -29,13 +71,12 @@ pub async fn generate_embedding(
     }
 }
 
-async fn generate_openai_embedding(settings: &Settings, text: &str) -> Result<Vec<f32>, String> {
+async fn generate_openai_embedding(client: &reqwest::Client, settings: &Settings, text: &str) -> Result<Vec<f32>, String> {
     let api_key = settings
         .openai_api_key
         .as_ref()
         .ok_or("OpenAI API key not configured")?;
 
-    let client = reqwest::Client::new();
     let body = serde_json::json!({
         "model": "text-embedding-3-small",
         "input": text,
@@ -77,13 +118,12 @@ async fn generate_openai_embedding(settings: &Settings, text: &str) -> Result<Ve
         .ok_or_else(|| "No embedding returned from OpenAI".to_string())
 }
 
-async fn generate_ollama_embedding(settings: &Settings, text: &str) -> Result<Vec<f32>, String> {
+async fn generate_ollama_embedding(client: &reqwest::Client, settings: &Settings, text: &str) -> Result<Vec<f32>, String> {
     let base_url = settings
         .ollama_base_url
         .as_deref()
         .unwrap_or("http://localhost:11434");
 
-    let client = reqwest::Client::new();
     let body = serde_json::json!({
         "model": "nomic-embed-text",
         "prompt": text,
@@ -115,18 +155,28 @@ async fn generate_ollama_embedding(settings: &Settings, text: &str) -> Result<Ve
     Ok(parsed.embedding)
 }
 
-async fn is_ollama_available(settings: &Settings) -> bool {
+async fn is_ollama_available(client: &reqwest::Client, settings: &Settings) -> bool {
+    // Return cached result if still fresh
+    if let Ok(cache) = OLLAMA_AVAILABLE_CACHE.lock() {
+        if let Some((available, checked_at)) = *cache {
+            if checked_at.elapsed().as_secs() < OLLAMA_CACHE_TTL_SECS {
+                return available;
+            }
+        }
+    }
+
     let base_url = settings
         .ollama_base_url
         .as_deref()
         .unwrap_or("http://localhost:11434");
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .unwrap_or_default();
+    let available = client.get(base_url).send().await.is_ok();
 
-    client.get(base_url).send().await.is_ok()
+    if let Ok(mut cache) = OLLAMA_AVAILABLE_CACHE.lock() {
+        *cache = Some((available, Instant::now()));
+    }
+
+    available
 }
 
 // -- Vector similarity search --
@@ -170,26 +220,15 @@ pub fn vector_search(
     query_embedding: &[f32],
     limit: usize,
 ) -> Result<Vec<ScoredChunk>, String> {
-    // Check whether embeddings exist
-    let count: i64 = db
-        .query_row("SELECT COUNT(*) FROM chunk_embeddings", [], |row| {
-            row.get(0)
-        })
-        .unwrap_or(0);
-
-    if count == 0 {
-        return Ok(vec![]);
-    }
-
     let mut stmt = db
-        .prepare(
+        .prepare_cached(
             "SELECT ce.chunk_id, ce.embedding, c.document_id, c.chunk_index, c.content_text, c.heading_context \
              FROM chunk_embeddings ce \
              JOIN chunks c ON c.id = ce.chunk_id",
         )
         .map_err(|e| e.to_string())?;
 
-    let mut scored: Vec<ScoredChunk> = stmt
+    let rows: Vec<_> = stmt
         .query_map([], |row| {
             let chunk_id: i32 = row.get(0)?;
             let blob: Vec<u8> = row.get(1)?;
@@ -207,7 +246,11 @@ pub fn vector_search(
             ))
         })
         .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Error reading embedding rows: {}", e))?;
+
+    let mut scored: Vec<ScoredChunk> = rows
+        .into_iter()
         .map(
             |(chunk_id, blob, document_id, chunk_index, content_text, heading_context)| {
                 let stored = decode_embedding_blob(&blob);
@@ -259,22 +302,26 @@ pub fn fts_chunk_search(
         return Ok(vec![]);
     }
 
-    // Check if chunks_fts exists; if not, fall back to LIKE search
-    let has_fts: bool = db
-        .query_row(
+    let has_fts = *HAS_CHUNKS_FTS.get_or_init(|| {
+        db.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chunks_fts'",
             [],
             |row| row.get::<_, i64>(0),
         )
         .unwrap_or(0)
-        > 0;
+            > 0
+    });
 
     if has_fts {
-        // Join keywords with OR for broader FTS5 matching
-        let fts_query = keywords.join(" OR ");
+        // Wrap each keyword in double quotes for safe FTS5 matching
+        let fts_query = keywords
+            .iter()
+            .map(|k| format!("\"{}\"", k))
+            .collect::<Vec<_>>()
+            .join(" OR ");
 
         let mut stmt = db
-            .prepare(
+            .prepare_cached(
                 "SELECT c.id, c.document_id, c.chunk_index, c.content_text, c.heading_context \
                  FROM chunks_fts \
                  JOIN chunks c ON c.id = chunks_fts.rowid \
@@ -296,8 +343,8 @@ pub fn fts_chunk_search(
                 })
             })
             .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Error reading FTS chunk rows: {}", e))?;
 
         Ok(results)
     } else {
@@ -335,8 +382,8 @@ pub fn fts_chunk_search(
                 })
             })
             .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Error reading LIKE search rows: {}", e))?;
 
         Ok(results)
     }
@@ -430,19 +477,21 @@ pub(crate) struct AiChatMessage {
 
 /// Stream a chat response from the configured provider via Tauri events.
 pub async fn stream_chat_response(
+    client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
     provider: &AiProvider,
     messages: &[AiChatMessage],
 ) -> Result<(), String> {
     match provider {
-        AiProvider::Openai => stream_openai(app, settings, messages).await,
-        AiProvider::Anthropic => stream_anthropic(app, settings, messages).await,
-        AiProvider::Ollama => stream_ollama(app, settings, messages).await,
+        AiProvider::Openai => stream_openai(client, app, settings, messages).await,
+        AiProvider::Anthropic => stream_anthropic(client, app, settings, messages).await,
+        AiProvider::Ollama => stream_ollama(client, app, settings, messages).await,
     }
 }
 
 async fn stream_openai(
+    client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
     messages: &[AiChatMessage],
@@ -452,7 +501,6 @@ async fn stream_openai(
         .as_ref()
         .ok_or("OpenAI API key not configured")?;
 
-    let client = reqwest::Client::new();
     let body = serde_json::json!({
         "model": "gpt-4o",
         "messages": messages,
@@ -478,35 +526,42 @@ async fn stream_openai(
 
     let mut buffer = String::new();
 
-    while let Some(chunk_result) = stream.next().await {
+    'outer: while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
         // Process complete SSE lines
         while let Some(line_end) = buffer.find('\n') {
-            let line = buffer[..line_end].trim().to_string();
-            buffer = buffer[line_end + 1..].to_string();
+            let line: String = buffer.drain(..=line_end).collect();
+            let line = line.trim();
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
-                    let _ = app.emit("ai-response-done", ());
+                    if let Err(e) = app.emit("ai-response-done", ()) {
+                        eprintln!("Warning: failed to emit ai-response-done: {}", e);
+                    }
                     return Ok(());
                 }
 
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                     if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
-                        let _ = app.emit("ai-response-chunk", content);
+                        if app.emit("ai-response-chunk", content).is_err() {
+                            break 'outer;
+                        }
                     }
                 }
             }
         }
     }
 
-    let _ = app.emit("ai-response-done", ());
+    if let Err(e) = app.emit("ai-response-done", ()) {
+        eprintln!("Warning: failed to emit ai-response-done: {}", e);
+    }
     Ok(())
 }
 
 async fn stream_anthropic(
+    client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
     messages: &[AiChatMessage],
@@ -534,7 +589,7 @@ async fn stream_anthropic(
         .collect();
 
     let mut body = serde_json::json!({
-        "model": "claude-sonnet-4-20250514",
+        "model": settings.anthropic_model(),
         "max_tokens": 4096,
         "messages": chat_messages,
         "stream": true,
@@ -544,7 +599,6 @@ async fn stream_anthropic(
         body["system"] = serde_json::Value::String(sys);
     }
 
-    let client = reqwest::Client::new();
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", api_key)
@@ -565,13 +619,13 @@ async fn stream_anthropic(
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
 
-    while let Some(chunk_result) = stream.next().await {
+    'outer: while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
         while let Some(line_end) = buffer.find('\n') {
-            let line = buffer[..line_end].trim().to_string();
-            buffer = buffer[line_end + 1..].to_string();
+            let line: String = buffer.drain(..=line_end).collect();
+            let line = line.trim();
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
@@ -580,11 +634,15 @@ async fn stream_anthropic(
                     match event_type {
                         "content_block_delta" => {
                             if let Some(text) = parsed["delta"]["text"].as_str() {
-                                let _ = app.emit("ai-response-chunk", text);
+                                if app.emit("ai-response-chunk", text).is_err() {
+                                    break 'outer;
+                                }
                             }
                         }
                         "message_stop" => {
-                            let _ = app.emit("ai-response-done", ());
+                            if let Err(e) = app.emit("ai-response-done", ()) {
+                                eprintln!("Warning: failed to emit ai-response-done: {}", e);
+                            }
                             return Ok(());
                         }
                         _ => {}
@@ -594,11 +652,14 @@ async fn stream_anthropic(
         }
     }
 
-    let _ = app.emit("ai-response-done", ());
+    if let Err(e) = app.emit("ai-response-done", ()) {
+        eprintln!("Warning: failed to emit ai-response-done: {}", e);
+    }
     Ok(())
 }
 
 async fn stream_ollama(
+    client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
     messages: &[AiChatMessage],
@@ -624,7 +685,6 @@ async fn stream_ollama(
         "stream": true,
     });
 
-    let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/api/chat", base_url))
         .json(&body)
@@ -642,13 +702,13 @@ async fn stream_ollama(
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
 
-    while let Some(chunk_result) = stream.next().await {
+    'outer: while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
         while let Some(line_end) = buffer.find('\n') {
-            let line = buffer[..line_end].trim().to_string();
-            buffer = buffer[line_end + 1..].to_string();
+            let line: String = buffer.drain(..=line_end).collect();
+            let line = line.trim();
 
             if line.is_empty() {
                 continue;
@@ -656,24 +716,31 @@ async fn stream_ollama(
 
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
                 if let Some(content) = parsed["message"]["content"].as_str() {
-                    let _ = app.emit("ai-response-chunk", content);
+                    if app.emit("ai-response-chunk", content).is_err() {
+                        break 'outer;
+                    }
                 }
 
                 if parsed["done"].as_bool() == Some(true) {
-                    let _ = app.emit("ai-response-done", ());
+                    if let Err(e) = app.emit("ai-response-done", ()) {
+                        eprintln!("Warning: failed to emit ai-response-done: {}", e);
+                    }
                     return Ok(());
                 }
             }
         }
     }
 
-    let _ = app.emit("ai-response-done", ());
+    if let Err(e) = app.emit("ai-response-done", ()) {
+        eprintln!("Warning: failed to emit ai-response-done: {}", e);
+    }
     Ok(())
 }
 
 // -- Provider connection testing --
 
 pub async fn test_provider_connection(
+    client: &reqwest::Client,
     settings: &Settings,
     provider: &AiProvider,
 ) -> Result<String, String> {
@@ -684,7 +751,6 @@ pub async fn test_provider_connection(
                 .as_ref()
                 .ok_or("OpenAI API key not configured")?;
 
-            let client = reqwest::Client::new();
             let resp = client
                 .get("https://api.openai.com/v1/models")
                 .header("Authorization", format!("Bearer {}", api_key))
@@ -707,9 +773,8 @@ pub async fn test_provider_connection(
                 .ok_or("Anthropic API key not configured")?;
 
             // Send a minimal request to verify the key
-            let client = reqwest::Client::new();
             let body = serde_json::json!({
-                "model": "claude-sonnet-4-20250514",
+                "model": settings.anthropic_model(),
                 "max_tokens": 1,
                 "messages": [{"role": "user", "content": "Hi"}],
             });
@@ -738,11 +803,6 @@ pub async fn test_provider_connection(
                 .as_deref()
                 .unwrap_or("http://localhost:11434");
 
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(5))
-                .build()
-                .unwrap_or_default();
-
             let resp = client
                 .get(base_url)
                 .send()
@@ -762,6 +822,7 @@ pub async fn test_provider_connection(
 
 /// Execute the full RAG pipeline: embed query, search, build prompt, stream response.
 pub async fn ask_question_rag(
+    client: reqwest::Client,
     app: AppHandle,
     question: String,
     provider: AiProvider,
@@ -769,7 +830,7 @@ pub async fn ask_question_rag(
     let settings = crate::settings::load_settings(&app)?;
 
     // Step 1: Generate query embedding
-    let query_embedding = generate_embedding(&settings, &provider, &question).await;
+    let query_embedding = generate_embedding(&client, &settings, &provider, &question).await;
 
     // Step 2: Search for relevant chunks
     let chunks = {
@@ -789,7 +850,7 @@ pub async fn ask_question_rag(
     let messages = build_rag_prompt(&chunks, &question);
 
     // Step 4: Stream response
-    stream_chat_response(&app, &settings, &provider, &messages).await?;
+    stream_chat_response(&client, &app, &settings, &provider, &messages).await?;
 
     Ok(())
 }

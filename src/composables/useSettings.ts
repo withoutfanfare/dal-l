@@ -7,6 +7,7 @@ const settings = ref<Settings>({
   anthropic_api_key: null,
   ollama_base_url: null,
   preferred_provider: null,
+  anthropic_model: null,
 })
 
 const loaded = ref(false)

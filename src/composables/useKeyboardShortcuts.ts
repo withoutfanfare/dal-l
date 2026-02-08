@@ -3,6 +3,7 @@ import type { Router } from 'vue-router'
 import { useSidebar } from './useSidebar'
 import { useTheme } from './useTheme'
 import { useAI } from './useAI'
+import { registerKeydownHandler } from './useKeydownDispatcher'
 
 export interface KeyboardShortcut {
   key: string
@@ -57,32 +58,32 @@ export function useKeyboardShortcuts(router: Router) {
     },
   ]
 
-  function onKeydown(e: KeyboardEvent) {
-    // Skip if user is typing in an input
-    const target = e.target as HTMLElement
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-      return
-    }
-
-    for (const shortcut of shortcuts) {
-      const metaMatch = shortcut.meta ? (e.metaKey || e.ctrlKey) : true
-      const shiftMatch = shortcut.shift ? e.shiftKey : !e.shiftKey
-      const keyMatch = e.key === shortcut.key
-
-      if (metaMatch && shiftMatch && keyMatch) {
-        e.preventDefault()
-        shortcut.handler()
-        return
-      }
-    }
-  }
+  let unregister: (() => void) | null = null
 
   onMounted(() => {
-    window.addEventListener('keydown', onKeydown)
+    unregister = registerKeydownHandler(10, (e) => {
+      // Skip if user is typing in an input
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return
+      }
+
+      for (const shortcut of shortcuts) {
+        const metaMatch = shortcut.meta ? (e.metaKey || e.ctrlKey) : !(e.metaKey || e.ctrlKey)
+        const shiftMatch = shortcut.shift ? e.shiftKey : !e.shiftKey
+        const keyMatch = e.key === shortcut.key
+
+        if (metaMatch && shiftMatch && keyMatch) {
+          e.preventDefault()
+          shortcut.handler()
+          return true
+        }
+      }
+    })
   })
 
   onUnmounted(() => {
-    window.removeEventListener('keydown', onKeydown)
+    unregister?.()
   })
 
   return { shortcuts }

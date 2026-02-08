@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import type { AiProvider } from '@/lib/types'
 import { sanitiseHtml } from '@/lib/sanitise'
 import ProviderBadge from './ProviderBadge.vue'
@@ -12,12 +12,10 @@ const props = defineProps<{
   provider: AiProvider | null
 }>()
 
-// Simple markdown-to-HTML conversion for streaming text.
-// We keep it lightweight — converts headings, bold, italic, code blocks, inline code, and paragraphs.
-const renderedHtml = computed(() => {
-  if (!props.response) return ''
+function renderMarkdown(text: string): string {
+  if (!text) return ''
 
-  let html = props.response
+  let html = text
     // Code blocks (fenced)
     .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
     // Inline code
@@ -36,12 +34,48 @@ const renderedHtml = computed(() => {
     // Paragraphs — double newlines
     .replace(/\n\n/g, '</p><p>')
 
-  // Wrap in paragraph if not already wrapped
   if (!html.startsWith('<')) {
     html = '<p>' + html + '</p>'
   }
 
   return sanitiseHtml(html)
+}
+
+const renderedHtml = ref('')
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// Debounce rendering during streaming to avoid running regex + DOMPurify on every character
+watch(() => props.response, (newResponse) => {
+  if (!props.loading) {
+    // Not streaming — render immediately
+    renderedHtml.value = renderMarkdown(newResponse)
+    return
+  }
+
+  // During streaming, batch updates at ~120ms intervals
+  if (debounceTimer === null) {
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null
+      renderedHtml.value = renderMarkdown(props.response)
+    }, 120)
+  }
+})
+
+// Final render when streaming completes
+watch(() => props.loading, (isLoading, wasLoading) => {
+  if (wasLoading && !isLoading) {
+    if (debounceTimer !== null) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
+    renderedHtml.value = renderMarkdown(props.response)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer)
+  }
 })
 </script>
 

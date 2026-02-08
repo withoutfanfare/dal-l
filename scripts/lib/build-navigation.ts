@@ -1,3 +1,5 @@
+import { toSlug } from './slug.js'
+
 export interface DocInfo {
   slug: string
   title: string
@@ -31,7 +33,7 @@ export function buildNavigation(documents: DocInfo[]): NavigationNode[] {
   for (const doc of documents) {
     if (!doc.section) continue
 
-    const sectionSlug = toSlug(doc.section)
+    const sectionSlug = toSlug(doc.section, false)
 
     if (!nodeMap.has(sectionSlug)) {
       nodeMap.set(sectionSlug, {
@@ -83,8 +85,12 @@ export function buildNavigation(documents: DocInfo[]): NavigationNode[] {
 
     if (existing) {
       // Merge: prefer the document's title and take the lower sort order.
+      // Also update parentSlug and level from the document, as the section
+      // placeholder may have less accurate values.
       existing.title = doc.title
       existing.sortOrder = Math.min(existing.sortOrder, doc.sortOrder)
+      existing.parentSlug = doc.parentSlug
+      existing.level = doc.level
     } else {
       nodeMap.set(doc.slug, {
         slug: doc.slug,
@@ -137,12 +143,9 @@ export function buildNavigation(documents: DocInfo[]): NavigationNode[] {
   return nodes
 }
 
-function toSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
+// toSlug is imported from ./slug.ts (shared implementation).
+// Calls in this file use stripPrefix=false because section names have already
+// been cleaned of numeric prefixes by extract-metadata.ts.
 
 function toTitle(slug: string): string {
   return slug

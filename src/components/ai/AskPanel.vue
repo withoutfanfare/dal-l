@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { watch, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useAI } from '@/composables/useAI'
+import { registerKeydownHandler } from '@/composables/useKeydownDispatcher'
 import AskInput from './AskInput.vue'
 import AskResponse from './AskResponse.vue'
 
@@ -35,19 +36,20 @@ function handleOverlayClick() {
   close()
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isOpen.value) {
-    e.preventDefault()
-    close()
-  }
-}
+let unregister: (() => void) | null = null
 
 onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
+  unregister = registerKeydownHandler(20, (e) => {
+    if (e.key === 'Escape' && isOpen.value) {
+      e.preventDefault()
+      close()
+      return true
+    }
+  })
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKeydown)
+  unregister?.()
 })
 </script>
 
@@ -56,7 +58,7 @@ onUnmounted(() => {
   <Transition name="overlay">
     <div
       v-if="isOpen"
-      class="fixed inset-0 bg-black/20 dark:bg-black/40 z-40"
+      class="fixed inset-0 bg-black/20 dark:bg-black/40 z-[100]"
       @click="handleOverlayClick"
     />
   </Transition>
@@ -65,7 +67,7 @@ onUnmounted(() => {
   <Transition name="panel">
     <div
       v-if="isOpen"
-      class="fixed top-0 right-0 bottom-0 w-[460px] max-w-[90vw] bg-surface border-l border-border shadow-xl z-50 flex flex-col"
+      class="fixed top-0 right-0 bottom-0 w-[460px] max-w-[90vw] bg-surface border-l border-border shadow-xl z-[110] flex flex-col"
       style="-webkit-app-region: no-drag"
     >
       <!-- Header -->

@@ -1,4 +1,5 @@
 import path from 'path'
+import { toSlug } from './slug.js'
 
 export interface DocumentMetadata {
   slug: string
@@ -28,17 +29,7 @@ function extractSortOrder(segment: string): number {
   return match ? parseInt(match[1], 10) : 999
 }
 
-/**
- * Convert a string to a URL-friendly slug.
- * Strips numeric prefixes, lowercases, replaces spaces and special chars with hyphens,
- * and collapses consecutive hyphens.
- */
-function toSlug(segment: string): string {
-  return stripNumericPrefix(segment)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
+// toSlug is imported from ./slug.ts (shared implementation)
 
 /**
  * Clean a directory name for display as a section title.
@@ -62,12 +53,13 @@ export function extractMetadata(
     fileName.toLowerCase() === 'readme' || fileName.endsWith('-index')
 
   // Build the slug from directory segments + filename
-  const dirSlugParts = segments.map(toSlug)
+  const dirSlugParts = segments.map((s) => toSlug(s))
 
   let slug: string
   if (isIndex) {
-    // Index files get their parent directory's slug
-    slug = dirSlugParts.length > 0 ? dirSlugParts.join('/') : toSlug(fileName)
+    // Index files get their parent directory's slug.
+    // Root-level README.md (no parent directory) becomes the collection index.
+    slug = dirSlugParts.length > 0 ? dirSlugParts.join('/') : 'index'
   } else {
     slug = [...dirSlugParts, toSlug(fileName)].join('/')
   }
@@ -78,14 +70,18 @@ export function extractMetadata(
   if (isIndex && segments.length > 0) {
     sortOrder = extractSortOrder(segments[segments.length - 1])
   } else {
+    // Note: regex still matches correctly since the extension (.md) is at the end,
+    // not at the start where the numeric prefix pattern anchors.
     sortOrder = extractSortOrder(parsed.base)
   }
 
   // Section is the top-level directory name, cleaned of numeric prefix
   const section = segments.length > 0 ? cleanSectionName(segments[0]) : ''
 
-  // Parent slug is the slug of the parent directory
-  const parentSlug = dirSlugParts.length > 0 ? dirSlugParts.join('/') : ''
+  // Parent slug: for index files go one level up, otherwise use the containing directory
+  const parentSlug = isIndex
+    ? (dirSlugParts.length > 1 ? dirSlugParts.slice(0, -1).join('/') : '')
+    : (dirSlugParts.length > 0 ? dirSlugParts.join('/') : '')
 
   // Title placeholder from filename (will be overridden from frontmatter/H1 later)
   const titleSource = isIndex && segments.length > 0

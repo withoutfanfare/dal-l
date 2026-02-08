@@ -16,7 +16,9 @@ function estimateTokens(text: string): number {
  * Split text into sentences, preserving trailing whitespace with each sentence.
  */
 function splitSentences(text: string): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g)
+  // Split on sentence boundaries, handling common abbreviations and edge cases
+  // like sentences ending with quotes or no trailing whitespace.
+  const sentences = text.match(/[^.!?]+(?:[.!?]+["'\s]|[.!?]+$)/g)
   if (!sentences) return [text]
   const joined = sentences.join('')
   if (joined.length < text.length) {
@@ -153,6 +155,10 @@ export function chunkContent(
 
   const chunks: ContentChunk[] = []
   let carryOver = ''
+  // Track the dominant heading for the carry-over buffer — the heading
+  // whose section contributed the most content to the current buffer.
+  let carryOverHeading = ''
+  let carryOverHeadingSize = 0
 
   for (const section of sections) {
     const heading = section.heading
@@ -161,20 +167,28 @@ export function chunkContent(
     if (sectionTokens <= targetTokens) {
       const combined = carryOver ? carryOver + '\n\n' + section.content : section.content
       if (estimateTokens(combined) <= targetTokens) {
+        // Track which heading contributed the most content to carry-over
+        if (sectionTokens >= carryOverHeadingSize) {
+          carryOverHeading = heading
+          carryOverHeadingSize = sectionTokens
+        }
         carryOver = combined
-        // Update heading context for the carry-over to the latest heading
         continue
       }
-      // Flush carry-over
+      // Flush carry-over using the dominant heading
       if (carryOver.trim()) {
         chunks.push({
           chunkIndex: chunks.length,
           contentText: carryOver.trim(),
-          headingContext: heading,
+          headingContext: carryOverHeading || heading,
         })
         carryOver = extractTail(carryOver, overlapTokens) + section.content
+        carryOverHeading = heading
+        carryOverHeadingSize = sectionTokens
       } else {
         carryOver = section.content
+        carryOverHeading = heading
+        carryOverHeadingSize = sectionTokens
       }
       continue
     }
@@ -186,20 +200,24 @@ export function chunkContent(
           chunks.push({
             chunkIndex: chunks.length,
             contentText: carryOver.trim(),
-            headingContext: heading,
+            headingContext: carryOverHeading || heading,
           })
           const t = extractTail(carryOver, overlapTokens)
           carryOver = ''
+          carryOverHeading = ''
+          carryOverHeadingSize = 0
           return t
         })()
       : ''
 
     carryOver = buildChunks(paragraphs, heading, targetTokens, overlapTokens, chunks, previousTail)
+    carryOverHeading = heading
+    carryOverHeadingSize = estimateTokens(carryOver)
   }
 
   // Flush any remaining buffer
   if (carryOver.trim()) {
-    const lastHeading = sections[sections.length - 1].heading
+    const lastHeading = carryOverHeading || sections[sections.length - 1].heading
     chunks.push({
       chunkIndex: chunks.length,
       contentText: carryOver.trim(),

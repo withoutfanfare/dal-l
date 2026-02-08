@@ -24,5 +24,10 @@ export function useCollections() {
     collections.value.find(c => c.id === activeCollectionId.value),
   )
 
-  return { collections, activeCollectionId, activeCollection, loadCollections, setActiveCollection }
+  async function reload() {
+    loaded.value = false
+    await loadCollections()
+  }
+
+  return { collections, activeCollectionId, activeCollection, loadCollections, setActiveCollection, reload }
 }

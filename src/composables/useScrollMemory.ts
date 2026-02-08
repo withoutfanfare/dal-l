@@ -10,6 +10,11 @@ export function useScrollMemory(router: Router) {
   function savePosition(path: string) {
     const container = getScrollContainer()
     if (container) {
+      // Evict oldest entry when map exceeds 100 entries
+      if (scrollPositions.size > 100) {
+        const firstKey = scrollPositions.keys().next().value
+        if (firstKey) scrollPositions.delete(firstKey)
+      }
       scrollPositions.set(path, container.scrollTop)
     }
   }
@@ -29,6 +34,7 @@ export function useScrollMemory(router: Router) {
     }
   }
 
+  // Intentional: guards persist for app lifetime as AppLayout never unmounts
   router.beforeEach((_to, from) => {
     savePosition(from.fullPath)
   })

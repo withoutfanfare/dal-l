@@ -12,58 +12,62 @@ export function useTableOfContents(containerSelector: string = '.prose') {
   const activeId = ref<string>('')
 
   let observer: IntersectionObserver | null = null
+  const observedElements = new Set<Element>()
 
-  function extractHeadings() {
+  function getObserver(): IntersectionObserver {
+    if (!observer) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              activeId.value = entry.target.id
+              break
+            }
+          }
+        },
+        { rootMargin: '-52px 0px -70% 0px', threshold: 0 },
+      )
+    }
+    return observer
+  }
+
+  function refresh() {
     const container = document.querySelector(containerSelector)
     if (!container) return
 
+    // Unobserve previous elements without destroying the observer
+    const obs = getObserver()
+    for (const el of observedElements) {
+      obs.unobserve(el)
+    }
+    observedElements.clear()
+
+    // Extract headings
     const elements = container.querySelectorAll('h2, h3')
     const items: TocHeading[] = []
     let fallbackIndex = 0
 
     elements.forEach((el) => {
-      // Preserve build-time IDs from rehype-slug; only generate fallback if missing
       if (!el.id) {
         el.id = `heading-${fallbackIndex++}`
       }
-
       items.push({
         id: el.id,
         text: el.textContent?.trim() ?? '',
         level: el.tagName === 'H2' ? 2 : 3,
         isActive: false,
       })
+      obs.observe(el)
+      observedElements.add(el)
     })
 
     headings.value = items
-  }
 
-  function observeHeadings() {
-    if (observer) {
-      observer.disconnect()
+    // Scroll to hash target if present in the URL
+    const hash = window.location.hash?.slice(1)
+    if (hash) {
+      nextTick(() => scrollToHeading(hash))
     }
-
-    const container = document.querySelector(containerSelector)
-    if (!container) return
-
-    observer = new IntersectionObserver(
-      (entries) => {
-        // Find the first heading that is intersecting
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            activeId.value = entry.target.id
-            break
-          }
-        }
-      },
-      {
-        rootMargin: '-52px 0px -70% 0px',
-        threshold: 0,
-      },
-    )
-
-    const elements = container.querySelectorAll('h2, h3')
-    elements.forEach((el) => observer!.observe(el))
   }
 
   function scrollToHeading(id: string) {
@@ -74,29 +78,18 @@ export function useTableOfContents(containerSelector: string = '.prose') {
     }
   }
 
-  async function refresh() {
-    await nextTick()
-    extractHeadings()
-    observeHeadings()
-
-    // Scroll to hash target if present in the URL
-    const hash = window.location.hash?.slice(1)
-    if (hash) {
-      await nextTick()
-      scrollToHeading(hash)
-    }
-  }
-
   function cleanup() {
     if (observer) {
       observer.disconnect()
       observer = null
     }
+    observedElements.clear()
     headings.value = []
     activeId.value = ''
   }
 
-  onMounted(() => {
+  onMounted(async () => {
+    await nextTick()
     refresh()
   })
 

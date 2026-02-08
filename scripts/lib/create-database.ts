@@ -2,9 +2,9 @@ import Database from 'better-sqlite3'
 import { existsSync, unlinkSync } from 'node:fs'
 
 export function createDatabase(dbPath: string): Database.Database {
-  if (existsSync(dbPath)) {
-    unlinkSync(dbPath)
-  }
+  if (existsSync(dbPath)) unlinkSync(dbPath)
+  if (existsSync(`${dbPath}-wal`)) unlinkSync(`${dbPath}-wal`)
+  if (existsSync(`${dbPath}-shm`)) unlinkSync(`${dbPath}-shm`)
 
   const db = new Database(dbPath)
 
@@ -68,11 +68,16 @@ export function createDatabase(dbPath: string): Database.Database {
     );
 
     CREATE TABLE chunk_embeddings (
-      chunk_id INTEGER NOT NULL REFERENCES chunks(id),
+      chunk_id INTEGER PRIMARY KEY REFERENCES chunks(id),
       embedding BLOB
     );
 
     CREATE VIRTUAL TABLE chunks_fts USING fts5(content_text, heading_context);
+
+    CREATE INDEX IF NOT EXISTS idx_documents_collection_id ON documents(collection_id);
+    CREATE INDEX IF NOT EXISTS idx_navigation_tree_collection_id ON navigation_tree(collection_id);
+    CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
+    CREATE INDEX IF NOT EXISTS idx_navigation_tree_sort ON navigation_tree(collection_id, parent_slug, sort_order);
   `)
 
   return db
@@ -94,20 +99,26 @@ export function insertCollection(
   stmt.run(collection.id, collection.name, collection.icon, collection.description ?? null, collection.sortOrder)
 }
 
-export function insertDocument(
+interface DocumentInsertParams {
+  collectionId: string
+  slug: string
+  title: string
+  section: string
+  sortOrder: number
+  parentSlug: string
+  contentHtml: string
+  contentRaw: string
+  path: string
+  tags: string[]
+}
+
+/**
+ * Insert a document and its FTS/tag rows without wrapping in a transaction.
+ * The caller is responsible for providing an outer transaction.
+ */
+export function insertDocumentRaw(
   db: Database.Database,
-  doc: {
-    collectionId: string
-    slug: string
-    title: string
-    section: string
-    sortOrder: number
-    parentSlug: string
-    contentHtml: string
-    contentRaw: string
-    path: string
-    tags: string[]
-  },
+  doc: DocumentInsertParams,
 ): number {
   const insertDoc = db.prepare(`
     INSERT INTO documents (collection_id, slug, title, section, sort_order, parent_slug, content_html, content_raw, path)
@@ -123,71 +134,97 @@ export function insertDocument(
   const selectTag = db.prepare('SELECT id FROM tags WHERE tag = ?')
   const insertDocTag = db.prepare('INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?, ?)')
 
-  const insert = db.transaction(() => {
-    const result = insertDoc.run(
-      doc.collectionId,
-      doc.slug,
-      doc.title,
-      doc.section,
-      doc.sortOrder,
-      doc.parentSlug,
-      doc.contentHtml,
-      doc.contentRaw,
-      doc.path,
-    )
+  const result = insertDoc.run(
+    doc.collectionId,
+    doc.slug,
+    doc.title,
+    doc.section,
+    doc.sortOrder,
+    doc.parentSlug,
+    doc.contentHtml,
+    doc.contentRaw,
+    doc.path,
+  )
 
-    const documentId = result.lastInsertRowid as number
+  const documentId = result.lastInsertRowid as number
 
-    // Insert into FTS index
-    const tagString = doc.tags.join(' ')
-    insertFts.run(documentId, doc.title, doc.contentRaw, doc.section, doc.collectionId, tagString)
+  const tagString = doc.tags.join(' ')
+  insertFts.run(documentId, doc.title, doc.contentRaw, doc.section, doc.collectionId, tagString)
 
-    for (const tag of doc.tags) {
-      insertTag.run(tag)
-      const row = selectTag.get(tag) as { id: number }
-      insertDocTag.run(documentId, row.id)
-    }
+  for (const tag of doc.tags) {
+    insertTag.run(tag)
+    const row = selectTag.get(tag) as { id: number }
+    insertDocTag.run(documentId, row.id)
+  }
 
-    return documentId
-  })
+  return documentId
+}
 
+/**
+ * Insert a document with its own transaction (for standalone use).
+ */
+export function insertDocument(
+  db: Database.Database,
+  doc: DocumentInsertParams,
+): number {
+  const insert = db.transaction(() => insertDocumentRaw(db, doc))
   return insert()
 }
 
-export function insertNavigation(
+interface NavigationNode {
+  slug: string
+  parentSlug: string
+  title: string
+  sortOrder: number
+  level: number
+  hasChildren: boolean
+}
+
+/**
+ * Insert navigation nodes without wrapping in a transaction.
+ * The caller is responsible for providing an outer transaction.
+ */
+export function insertNavigationRaw(
   db: Database.Database,
   collectionId: string,
-  nodes: Array<{
-    slug: string
-    parentSlug: string
-    title: string
-    sortOrder: number
-    level: number
-    hasChildren: boolean
-  }>,
+  nodes: NavigationNode[],
 ): void {
   const stmt = db.prepare(`
     INSERT INTO navigation_tree (collection_id, slug, parent_slug, title, sort_order, level, has_children)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `)
 
-  const insertAll = db.transaction(() => {
-    for (const node of nodes) {
-      stmt.run(collectionId, node.slug, node.parentSlug, node.title, node.sortOrder, node.level, node.hasChildren ? 1 : 0)
-    }
-  })
+  for (const node of nodes) {
+    stmt.run(collectionId, node.slug, node.parentSlug, node.title, node.sortOrder, node.level, node.hasChildren ? 1 : 0)
+  }
+}
 
+/**
+ * Insert navigation nodes with their own transaction (for standalone use).
+ */
+export function insertNavigation(
+  db: Database.Database,
+  collectionId: string,
+  nodes: NavigationNode[],
+): void {
+  const insertAll = db.transaction(() => insertNavigationRaw(db, collectionId, nodes))
   insertAll()
 }
 
-export function insertChunks(
+interface ChunkInsertParams {
+  chunkIndex: number
+  contentText: string
+  headingContext: string
+}
+
+/**
+ * Insert chunks and their FTS rows without wrapping in a transaction.
+ * The caller is responsible for providing an outer transaction.
+ */
+export function insertChunksRaw(
   db: Database.Database,
   documentId: number,
-  chunks: Array<{
-    chunkIndex: number
-    contentText: string
-    headingContext: string
-  }>,
+  chunks: ChunkInsertParams[],
 ): void {
   const stmt = db.prepare(`
     INSERT INTO chunks (document_id, chunk_index, content_text, heading_context)
@@ -199,13 +236,20 @@ export function insertChunks(
     VALUES (?, ?, ?)
   `)
 
-  const insertAll = db.transaction(() => {
-    for (const chunk of chunks) {
-      const result = stmt.run(documentId, chunk.chunkIndex, chunk.contentText, chunk.headingContext)
-      ftsStmt.run(result.lastInsertRowid, chunk.contentText, chunk.headingContext)
-    }
-  })
-
-  insertAll()
+  for (const chunk of chunks) {
+    const result = stmt.run(documentId, chunk.chunkIndex, chunk.contentText, chunk.headingContext)
+    ftsStmt.run(result.lastInsertRowid, chunk.contentText, chunk.headingContext)
+  }
 }
 
+/**
+ * Insert chunks with their own transaction (for standalone use).
+ */
+export function insertChunks(
+  db: Database.Database,
+  documentId: number,
+  chunks: ChunkInsertParams[],
+): void {
+  const insertAll = db.transaction(() => insertChunksRaw(db, documentId, chunks))
+  insertAll()
+}

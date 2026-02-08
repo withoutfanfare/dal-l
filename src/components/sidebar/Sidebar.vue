@@ -10,7 +10,7 @@ const { tree, loading } = useNavigation()
 </script>
 
 <template>
-  <aside class="w-[260px] h-full bg-sidebar border-r border-border flex flex-col pt-[52px] overflow-hidden">
+  <aside class="h-full bg-sidebar/80 backdrop-blur-sm border-r border-border flex flex-col pt-[52px] overflow-hidden">
     <!-- Collection switcher -->
     <div class="px-3 pt-2 pb-1" style="-webkit-app-region: no-drag">
       <CollectionSwitcher />

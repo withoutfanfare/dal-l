@@ -26,7 +26,6 @@ export interface Document {
   sort_order: number
   parent_slug: string
   content_html: string
-  content_raw: string
   path: string
 }
 
@@ -58,6 +57,7 @@ export interface Settings {
   anthropic_api_key: string | null
   ollama_base_url: string | null
   preferred_provider: string | null
+  anthropic_model: string | null
 }
 
 export interface AiMessage {

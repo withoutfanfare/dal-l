@@ -1,4 +1,5 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
+import { registerKeydownHandler } from './useKeydownDispatcher'
 
 const isOpen = ref(false)
 
@@ -14,34 +15,21 @@ function toggle() {
   isOpen.value = !isOpen.value
 }
 
-function onKeydown(e: KeyboardEvent) {
+// Module-scope registration — registered once, never removed (app-lifetime shortcut)
+registerKeydownHandler(20, (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
     e.preventDefault()
     toggle()
+    return true
   }
 
   if (e.key === 'Escape' && isOpen.value) {
     e.preventDefault()
     close()
+    return true
   }
-}
-
-let listenerCount = 0
+})
 
 export function useCommandPalette() {
-  onMounted(() => {
-    if (listenerCount === 0) {
-      window.addEventListener('keydown', onKeydown)
-    }
-    listenerCount++
-  })
-
-  onUnmounted(() => {
-    listenerCount--
-    if (listenerCount === 0) {
-      window.removeEventListener('keydown', onKeydown)
-    }
-  })
-
   return { isOpen, open, close, toggle }
 }

@@ -16,6 +16,7 @@ const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 function handleMediaChange(e: MediaQueryListEvent) {
   systemPrefersDark.value = e.matches
 }
+// Intentional: singleton listener persists for app lifetime, no cleanup needed
 mediaQuery.addEventListener('change', handleMediaChange)
 
 const isDark = computed(() => {
