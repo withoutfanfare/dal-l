@@ -232,6 +232,7 @@ async function processCollection(
   const docInfos: DocInfo[] = []
 
   for (const file of processedFiles) {
+    const fileMtime = statSync(file.filePath).mtime.toISOString()
     const docId = insertDocumentRaw(db, {
       collectionId: collection.id,
       slug: file.fullSlug,
@@ -245,6 +246,7 @@ async function processCollection(
       contentRaw: file.parsed.content,
       path: file.metadata.relativePath,
       tags: file.parsed.tags,
+      lastModified: fileMtime,
     })
 
     const chunks = chunkContent(file.parsed.content)

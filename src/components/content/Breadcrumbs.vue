@@ -2,12 +2,14 @@
 import { computed } from 'vue'
 import type { Document } from '@/lib/types'
 import { useCollections } from '@/composables/useCollections'
+import { useNavigation } from '@/composables/useNavigation'
 
 const props = defineProps<{
   document: Document
 }>()
 
 const { activeCollection } = useCollections()
+const { findSectionSlug } = useNavigation()
 
 const segments = computed(() => {
   const crumbs: { label: string; to: string | null }[] = []
@@ -20,9 +22,10 @@ const segments = computed(() => {
   }
 
   if (props.document.section) {
+    const sectionSlug = findSectionSlug(props.document.section)
     crumbs.push({
       label: props.document.section,
-      to: null,
+      to: sectionSlug ? `/${props.document.collection_id}/${sectionSlug}` : null,
     })
   }
 

@@ -2,12 +2,17 @@
 import { watch, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useAI } from '@/composables/useAI'
 import { registerKeydownHandler } from '@/composables/useKeydownDispatcher'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 import AskInput from './AskInput.vue'
 import AskResponse from './AskResponse.vue'
 
-const { isOpen, question, response, loading, error, activeProvider, hasResponse, close, reset, ask } = useAI()
+const { isOpen, conversations, loading, hasConversations, close, clearConversation, ask } = useAI()
 
 const inputRef = ref<InstanceType<typeof AskInput> | null>(null)
+const scrollRef = ref<HTMLElement | null>(null)
+const panelRef = ref<HTMLElement | null>(null)
+
+useFocusTrap(panelRef, isOpen)
 
 // Focus the input when the panel opens
 watch(isOpen, async (open) => {
@@ -17,15 +22,32 @@ watch(isOpen, async (open) => {
   }
 })
 
+// Auto-scroll to bottom when new content arrives
+watch(
+  () => conversations.value.length > 0
+    ? conversations.value[conversations.value.length - 1].response
+    : null,
+  async () => {
+    await nextTick()
+    if (scrollRef.value) {
+      scrollRef.value.scrollTop = scrollRef.value.scrollHeight
+    }
+  },
+)
+
+// Scroll to bottom when a new conversation entry is added
+watch(
+  () => conversations.value.length,
+  async () => {
+    await nextTick()
+    if (scrollRef.value) {
+      scrollRef.value.scrollTop = scrollRef.value.scrollHeight
+    }
+  },
+)
+
 function handleSubmit(text: string) {
   ask(text)
-}
-
-function handleNewQuestion() {
-  reset()
-  nextTick(() => {
-    inputRef.value?.focus()
-  })
 }
 
 function handleClose() {
@@ -34,6 +56,13 @@ function handleClose() {
 
 function handleOverlayClick() {
   close()
+}
+
+function handleClear() {
+  clearConversation()
+  nextTick(() => {
+    inputRef.value?.focus()
+  })
 }
 
 let unregister: (() => void) | null = null
@@ -67,6 +96,7 @@ onUnmounted(() => {
   <Transition name="panel">
     <div
       v-if="isOpen"
+      ref="panelRef"
       class="fixed top-0 right-0 bottom-0 w-[460px] max-w-[90vw] bg-surface border-l border-border shadow-xl z-[110] flex flex-col"
       style="-webkit-app-region: no-drag"
     >
@@ -79,6 +109,13 @@ onUnmounted(() => {
           <h2 class="text-sm font-semibold text-text-primary">Ask AI</h2>
         </div>
         <div class="flex items-center gap-2">
+          <button
+            v-if="hasConversations"
+            class="text-xs text-text-secondary hover:text-text-primary transition-colors"
+            @click="handleClear"
+          >
+            Clear
+          </button>
           <span class="text-[10px] text-text-secondary bg-surface-secondary rounded px-1.5 py-0.5 font-mono">
             Esc
           </span>
@@ -94,8 +131,8 @@ onUnmounted(() => {
       </div>
 
       <!-- Content -->
-      <div class="flex-1 overflow-y-auto px-4 py-4">
-        <div v-if="!hasResponse && !loading && !error" class="flex flex-col items-center justify-center h-full text-center px-4">
+      <div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4" aria-live="polite" aria-atomic="false">
+        <div v-if="!hasConversations" class="flex flex-col items-center justify-center h-full text-center px-4">
           <svg class="w-10 h-10 text-text-secondary/40 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
           </svg>
@@ -104,25 +141,21 @@ onUnmounted(() => {
           </p>
         </div>
 
-        <AskResponse
-          v-else
-          :question="question"
-          :response="response"
-          :loading="loading"
-          :error="error"
-          :provider="activeProvider"
-        />
+        <div v-else class="space-y-6">
+          <AskResponse
+            v-for="entry in conversations"
+            :key="entry.id"
+            :question="entry.question"
+            :response="entry.response"
+            :loading="entry.loading"
+            :error="entry.error"
+            :provider="entry.provider"
+          />
+        </div>
       </div>
 
       <!-- Input area -->
       <div class="border-t border-border px-4 py-3">
-        <button
-          v-if="hasResponse && !loading"
-          class="w-full mb-2 text-xs text-accent hover:text-accent/80 transition-colors text-left"
-          @click="handleNewQuestion"
-        >
-          Ask another question
-        </button>
         <AskInput
           ref="inputRef"
           :disabled="loading"

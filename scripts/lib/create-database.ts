@@ -30,7 +30,8 @@ export function createDatabase(dbPath: string): Database.Database {
       parent_slug TEXT NOT NULL DEFAULT '',
       content_html TEXT NOT NULL,
       content_raw TEXT NOT NULL,
-      path TEXT NOT NULL
+      path TEXT NOT NULL,
+      last_modified TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE tags (
@@ -110,6 +111,7 @@ interface DocumentInsertParams {
   contentRaw: string
   path: string
   tags: string[]
+  lastModified: string
 }
 
 /**
@@ -121,8 +123,8 @@ export function insertDocumentRaw(
   doc: DocumentInsertParams,
 ): number {
   const insertDoc = db.prepare(`
-    INSERT INTO documents (collection_id, slug, title, section, sort_order, parent_slug, content_html, content_raw, path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO documents (collection_id, slug, title, section, sort_order, parent_slug, content_html, content_raw, path, last_modified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
 
   const insertFts = db.prepare(`
@@ -144,6 +146,7 @@ export function insertDocumentRaw(
     doc.contentHtml,
     doc.contentRaw,
     doc.path,
+    doc.lastModified,
   )
 
   const documentId = result.lastInsertRowid as number

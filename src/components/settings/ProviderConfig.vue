@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { AiProvider } from '@/lib/types'
 
-defineProps<{
+const props = defineProps<{
   provider: AiProvider
   label: string
   value: string
   placeholder: string
   note?: string
   isUrl?: boolean
+  helpUrl?: string
 }>()
 
 const emit = defineEmits<{
@@ -20,18 +21,68 @@ const showKey = ref(false)
 const testing = ref(false)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 
+const validationError = computed(() => {
+  const val = props.value.trim()
+  if (!val) return null
+
+  if (props.provider === 'openai') {
+    if (!val.startsWith('sk-') && !isMasked(val)) {
+      return 'OpenAI API key must start with "sk-"'
+    }
+  }
+
+  if (props.provider === 'anthropic') {
+    if (!val.startsWith('sk-ant-') && !isMasked(val)) {
+      return 'Anthropic API key must start with "sk-ant-"'
+    }
+  }
+
+  if (props.isUrl) {
+    try {
+      const url = new URL(val)
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        return 'URL must start with http:// or https://'
+      }
+    } catch {
+      return 'Please enter a valid URL'
+    }
+  }
+
+  return null
+})
+
+const isValid = computed(() => validationError.value === null)
+
+function isMasked(val: string): boolean {
+  if (val.length > 0 && [...val].every(c => c === '*')) return true
+  const dotPos = val.indexOf('...')
+  if (dotPos > 0 && dotPos + 3 < val.length) return true
+  return false
+}
+
 async function handleTest() {
   testing.value = true
   emit('test')
 }
 
-// Expose testing state so the parent can update it
-defineExpose({ testing, testResult })
+// Expose testing state and validation so the parent can access them
+defineExpose({ testing, testResult, isValid })
 </script>
 
 <template>
   <div class="space-y-2">
-    <label class="block text-sm font-medium text-text-primary">{{ label }}</label>
+    <div class="flex items-center gap-2">
+      <label class="block text-sm font-medium text-text-primary">{{ label }}</label>
+      <a
+        v-if="helpUrl"
+        :href="helpUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-xs text-accent hover:text-accent/80 transition-colors"
+      >
+        Get API key
+      </a>
+    </div>
 
     <div class="flex gap-2">
       <div class="relative flex-1">
@@ -39,7 +90,10 @@ defineExpose({ testing, testResult })
           :type="isUrl || showKey ? 'text' : 'password'"
           :value="value"
           :placeholder="placeholder"
-          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent pr-10"
+          class="w-full rounded-lg border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-1 pr-10"
+          :class="validationError
+            ? 'border-red-400 dark:border-red-600 focus:border-red-400 focus:ring-red-400'
+            : 'border-border focus:border-accent focus:ring-accent'"
           @input="emit('update:value', ($event.target as HTMLInputElement).value)"
         />
         <button
@@ -68,7 +122,8 @@ defineExpose({ testing, testResult })
       </button>
     </div>
 
-    <p v-if="note" class="text-xs text-text-secondary">{{ note }}</p>
+    <p v-if="validationError" class="text-xs text-red-600 dark:text-red-400">{{ validationError }}</p>
+    <p v-else-if="note" class="text-xs text-text-secondary">{{ note }}</p>
 
     <!-- Test result -->
     <div v-if="testResult" class="text-xs rounded px-2 py-1" :class="testResult.success ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'">

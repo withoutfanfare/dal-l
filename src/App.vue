@@ -5,6 +5,8 @@ import CommandPalette from '@/components/search/CommandPalette.vue'
 import AskPanel from '@/components/ai/AskPanel.vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
 import UpdateNotification from '@/components/UpdateNotification.vue'
+import Toast from '@/components/ui/Toast.vue'
+import ShortcutHelp from '@/components/help/ShortcutHelp.vue'
 import { useSettings } from '@/composables/useSettings'
 import { useUpdater } from '@/composables/useUpdater'
 
@@ -28,4 +30,6 @@ onMounted(() => {
   <AskPanel />
   <SettingsModal :open="settingsOpen" @close="settingsOpen = false" />
   <UpdateNotification />
+  <ShortcutHelp />
+  <Toast />
 </template>

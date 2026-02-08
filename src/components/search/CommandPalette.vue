@@ -3,16 +3,24 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import { useSearch } from '@/composables/useSearch'
+import { useCollections } from '@/composables/useCollections'
 import { useKeyboardNavigation } from '@/composables/useKeyboardNavigation'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 import SearchResultItem from '@/components/search/SearchResult.vue'
 import SearchEmpty from '@/components/search/SearchEmpty.vue'
 
 const router = useRouter()
 const { isOpen, close } = useCommandPalette()
-const { query, results, loading, clearSearch } = useSearch()
+const { query, results, loading, error, collectionFilter, clearSearch } = useSearch()
+const { collections } = useCollections()
+
+const showCollectionFilters = computed(() => collections.value.length > 1)
 
 const inputRef = ref<HTMLInputElement | null>(null)
+const paletteRef = ref<HTMLElement | null>(null)
 const resultCount = computed(() => results.value.length)
+
+useFocusTrap(paletteRef, isOpen)
 
 function navigateToResult(index: number) {
   const result = results.value[index]
@@ -82,6 +90,7 @@ watch(isOpen, async (open) => {
         >
           <div
             v-if="isOpen"
+            ref="paletteRef"
             class="mx-auto mt-[18vh] w-full max-w-lg overflow-hidden rounded-xl bg-surface shadow-2xl ring-1 ring-border"
           >
             <!-- Search input -->
@@ -121,9 +130,42 @@ watch(isOpen, async (open) => {
             <!-- Divider -->
             <div class="border-t border-border" />
 
+            <!-- Collection filters -->
+            <div v-if="showCollectionFilters" class="flex items-center gap-1.5 px-4 py-2 border-b border-border">
+              <button
+                class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"
+                :class="!collectionFilter
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-secondary text-text-secondary hover:text-text-primary'"
+                @click="collectionFilter = undefined"
+              >
+                All
+              </button>
+              <button
+                v-for="col in collections"
+                :key="col.id"
+                class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"
+                :class="collectionFilter === col.id
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-secondary text-text-secondary hover:text-text-primary'"
+                @click="collectionFilter = col.id"
+              >
+                {{ col.name }}
+              </button>
+            </div>
+
             <!-- Results -->
-            <div class="max-h-[320px] overflow-y-auto">
-              <template v-if="results.length > 0">
+            <div class="max-h-[320px] overflow-y-auto" aria-live="polite">
+              <span class="sr-only" v-if="!loading && query.trim() && !error">
+                {{ results.length > 0 ? `${results.length} results found` : 'No results' }}
+              </span>
+              <template v-if="error">
+                <div class="px-4 py-8 text-center">
+                  <p class="text-sm text-red-600 dark:text-red-400 mb-2">Search failed</p>
+                  <p class="text-xs text-text-secondary">{{ error }}</p>
+                </div>
+              </template>
+              <template v-else-if="results.length > 0">
                 <SearchResultItem
                   v-for="(result, index) in results"
                   :key="result.slug"

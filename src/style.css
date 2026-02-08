@@ -64,7 +64,7 @@ body {
   --tw-prose-bold: var(--color-text-primary);
   --tw-prose-code: var(--color-text-primary);
   --tw-prose-quotes: var(--color-text-secondary);
-  --tw-prose-pre-bg: var(--color-surface-secondary);
+  --tw-prose-pre-bg: #0f172a;
   --tw-prose-hr: var(--color-border);
   --tw-prose-th-borders: var(--color-border);
   --tw-prose-td-borders: var(--color-border);
@@ -88,14 +88,45 @@ body {
 
 /* Code blocks */
 .prose pre {
+  position: relative;
   border-radius: 0.5rem;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.65;
   padding: 1rem 1.25rem;
   border: 1px solid var(--color-border);
-  background-color: var(--color-surface-secondary) !important;
+  background-color: var(--tw-prose-pre-bg) !important;
   box-shadow: none;
+}
+
+/* Copy button on code blocks */
+.prose pre .code-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease, background-color 150ms ease, color 150ms ease;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+.prose pre:hover .code-copy-btn {
+  opacity: 1;
+}
+
+.prose pre .code-copy-btn:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text-primary);
 }
 
 .prose pre code {
@@ -309,6 +340,11 @@ mark {
   100% { opacity: 0; }
 }
 
+/* Image lightbox cursor */
+.prose-img-lightbox img {
+  cursor: zoom-in;
+}
+
 /* ---- Microanimations ---- */
 
 /* Sidebar links */
@@ -416,4 +452,33 @@ nav button:active {
 @keyframes blob-drift-3 {
   0%, 100% { transform: translate(0, 0) scale(1); }
   50%      { transform: translate(-30px, 30px) scale(1.1); }
+}
+
+/* Reduced motion: disable animations and minimise transitions */
+@media (prefers-reduced-motion: reduce) {
+  .ambient-blob {
+    animation: none !important;
+  }
+
+  .prose[data-enter] {
+    animation: none !important;
+  }
+
+  .page-enter-active,
+  .page-leave-active,
+  .section-enter-active,
+  .section-leave-active,
+  .sidebar-transition {
+    transition-duration: 0.01s !important;
+  }
+
+  nav a,
+  nav button,
+  [style*="no-drag"] button,
+  .prose a,
+  .prose .heading-anchor,
+  .prose pre .code-copy-btn,
+  .sidebar-resize-handle {
+    transition-duration: 0.01s !important;
+  }
 }

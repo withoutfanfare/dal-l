@@ -4,18 +4,30 @@ import { askQuestion } from '@/lib/api'
 import { useSettings } from './useSettings'
 import type { AiProvider } from '@/lib/types'
 
+export interface ConversationEntry {
+  id: string
+  question: string
+  response: string
+  loading: boolean
+  error: string | null
+  provider: AiProvider | null
+  timestamp: number
+}
+
 const isOpen = ref(false)
-const question = ref('')
-const response = ref('')
-const loading = ref(false)
-const error = ref<string | null>(null)
-const activeProvider = ref<AiProvider | null>(null)
+const conversations = ref<ConversationEntry[]>([])
 const unlistenFns = ref<(() => void)[]>([])
 
 export function useAI() {
   const { isConfigured } = useSettings()
 
-  const hasResponse = computed(() => response.value.length > 0)
+  const hasConversations = computed(() => conversations.value.length > 0)
+  const currentEntry = computed(() =>
+    conversations.value.length > 0
+      ? conversations.value[conversations.value.length - 1]
+      : null
+  )
+  const loading = computed(() => currentEntry.value?.loading ?? false)
 
   function open() {
     isOpen.value = true
@@ -29,12 +41,8 @@ export function useAI() {
     isOpen.value = !isOpen.value
   }
 
-  function reset() {
-    question.value = ''
-    response.value = ''
-    loading.value = false
-    error.value = null
-    activeProvider.value = null
+  function clearConversation() {
+    conversations.value = []
   }
 
   async function ask(text: string, provider?: AiProvider) {
@@ -44,24 +52,30 @@ export function useAI() {
     unlistenFns.value.forEach(fn => fn())
     unlistenFns.value = []
 
-    question.value = text.trim()
-    response.value = ''
-    loading.value = true
-    error.value = null
-    activeProvider.value = provider ?? null
+    const entry: ConversationEntry = {
+      id: crypto.randomUUID(),
+      question: text.trim(),
+      response: '',
+      loading: true,
+      error: null,
+      provider: provider ?? null,
+      timestamp: Date.now(),
+    }
+
+    conversations.value.push(entry)
 
     // Register all listeners concurrently before sending the question
     const [unlistenChunk, unlistenDone, unlistenError] = await Promise.all([
       listen<string>('ai-response-chunk', (event) => {
-        response.value += event.payload
+        entry.response += event.payload
       }),
       listen('ai-response-done', () => {
-        loading.value = false
+        entry.loading = false
         cleanup()
       }),
       listen<string>('ai-response-error', (event) => {
-        error.value = event.payload
-        loading.value = false
+        entry.error = event.payload
+        entry.loading = false
         cleanup()
       }),
     ])
@@ -78,25 +92,23 @@ export function useAI() {
     try {
       await askQuestion(text.trim(), provider)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-      loading.value = false
+      entry.error = e instanceof Error ? e.message : String(e)
+      entry.loading = false
       cleanup()
     }
   }
 
   return {
     isOpen,
-    question,
-    response,
+    conversations,
     loading,
-    error,
-    activeProvider,
-    hasResponse,
+    hasConversations,
+    currentEntry,
     isConfigured,
     open,
     close,
     toggle,
-    reset,
+    clearConversation,
     ask,
   }
 }

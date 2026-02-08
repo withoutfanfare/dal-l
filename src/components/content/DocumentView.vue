@@ -4,10 +4,29 @@ import { useRouter, useRoute } from 'vue-router'
 import { open } from '@tauri-apps/plugin-shell'
 import type { Document } from '@/lib/types'
 import { sanitiseHtml } from '@/lib/sanitise'
+import { useToast } from '@/composables/useToast'
+import ImageLightbox from './ImageLightbox.vue'
 
 const props = defineProps<{
   document: Document
 }>()
+
+const { addToast } = useToast()
+
+// Lightbox state
+const lightboxSrc = ref('')
+const lightboxAlt = ref('')
+const lightboxOpen = ref(false)
+
+function openLightbox(src: string, alt: string) {
+  lightboxSrc.value = src
+  lightboxAlt.value = alt
+  lightboxOpen.value = true
+}
+
+function closeLightbox() {
+  lightboxOpen.value = false
+}
 
 // Cache sanitised HTML keyed by slug + content length to avoid serving stale content after rebuilds
 const htmlCache = new Map<string, string>()
@@ -30,9 +49,10 @@ watch(
     }
     renderedHtml.value = html
 
-    // Inject heading anchors + enter animation after DOM update
+    // Inject heading anchors, copy buttons + enter animation after DOM update
     await nextTick()
     injectHeadingAnchors()
+    injectCopyButtons()
     if (contentRef.value) {
       contentRef.value.setAttribute('data-enter', '')
       contentRef.value.addEventListener('animationend', () => {
@@ -49,8 +69,44 @@ const contentRef = ref<HTMLElement | null>(null)
 
 const anchorSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 
+const copySvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'
+
+function injectCopyButtons() {
+  if (!contentRef.value) return
+
+  const preBlocks = contentRef.value.querySelectorAll('pre')
+  preBlocks.forEach((pre) => {
+    if (pre.querySelector('.code-copy-btn')) return
+    const btn = document.createElement('button')
+    btn.className = 'code-copy-btn'
+    btn.setAttribute('aria-label', 'Copy code')
+    btn.setAttribute('title', 'Copy code')
+    btn.innerHTML = copySvg
+    btn.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const text = pre.textContent || ''
+      navigator.clipboard.writeText(text).then(() => {
+        addToast('Copied to clipboard', 'success')
+      }).catch(() => { /* clipboard not available */ })
+    })
+    pre.appendChild(btn)
+  })
+}
+
 function handleClick(event: MouseEvent) {
   const target = event.target as HTMLElement
+
+  // Handle image clicks for lightbox
+  if (target.tagName === 'IMG') {
+    const img = target as HTMLImageElement
+    if (img.naturalWidth > 100) {
+      event.preventDefault()
+      event.stopPropagation()
+      openLightbox(img.src, img.alt || '')
+      return
+    }
+  }
 
   // Handle heading anchor link clicks
   const headingAnchor = target.closest('.heading-anchor') as HTMLElement | null
@@ -62,8 +118,7 @@ function handleClick(event: MouseEvent) {
       const deeplink = `dalil://${router.currentRoute.value.path.replace(/^\//, '')}#${heading.id}`
       try {
         navigator.clipboard.writeText(deeplink).then(() => {
-          headingAnchor.classList.add('heading-anchor-copied')
-          setTimeout(() => headingAnchor.classList.remove('heading-anchor-copied'), 1500)
+          addToast('Link copied to clipboard', 'success')
         }).catch(() => { /* clipboard not available */ })
       } catch {
         /* clipboard API not supported */
@@ -123,6 +178,7 @@ onMounted(async () => {
   contentRef.value?.addEventListener('click', handleClick)
   await nextTick()
   injectHeadingAnchors()
+  injectCopyButtons()
   if (contentRef.value) {
     contentRef.value.setAttribute('data-enter', '')
     contentRef.value.addEventListener('animationend', () => {
@@ -139,7 +195,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     ref="contentRef"
-    class="prose prose-neutral max-w-none
+    class="prose prose-neutral max-w-none prose-img-lightbox
            prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-text-primary
            prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-3 prose-h2:pb-2 prose-h2:border-b prose-h2:border-border
            prose-h3:text-base prose-h3:mt-7 prose-h3:mb-2
@@ -153,5 +209,12 @@ onBeforeUnmount(() => {
            prose-th:text-left prose-th:text-xs prose-th:uppercase prose-th:tracking-wider prose-th:text-text-secondary prose-th:font-medium
            prose-td:text-sm prose-td:text-text-primary"
     v-html="renderedHtml"
+  />
+
+  <ImageLightbox
+    v-if="lightboxOpen"
+    :src="lightboxSrc"
+    :alt="lightboxAlt"
+    @close="closeLightbox"
   />
 </template>

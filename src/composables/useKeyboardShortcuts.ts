@@ -3,6 +3,8 @@ import type { Router } from 'vue-router'
 import { useSidebar } from './useSidebar'
 import { useTheme } from './useTheme'
 import { useAI } from './useAI'
+import { useCollections } from './useCollections'
+import { useNavigation, type NavigationTree } from './useNavigation'
 import { registerKeydownHandler } from './useKeydownDispatcher'
 
 export interface KeyboardShortcut {
@@ -13,10 +15,24 @@ export interface KeyboardShortcut {
   handler: () => void
 }
 
+function firstLeaf(nodes: NavigationTree[]): NavigationTree | null {
+  for (const node of nodes) {
+    if (node.has_children && node.children.length > 0) {
+      const found = firstLeaf(node.children)
+      if (found) return found
+    } else {
+      return node
+    }
+  }
+  return null
+}
+
 export function useKeyboardShortcuts(router: Router) {
   const { toggleSidebar } = useSidebar()
   const { toggleTheme } = useTheme()
   const { toggle: toggleAI, isConfigured } = useAI()
+  const { collections, setActiveCollection } = useCollections()
+  const { loadNavigation, tree } = useNavigation()
 
   const shortcuts: KeyboardShortcut[] = [
     {
@@ -66,6 +82,23 @@ export function useKeyboardShortcuts(router: Router) {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return
+      }
+
+      // Cmd+1..9 — switch collection
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key >= '1' && e.key <= '9') {
+        const index = parseInt(e.key, 10) - 1
+        if (index < collections.value.length) {
+          e.preventDefault()
+          const collection = collections.value[index]
+          setActiveCollection(collection.id)
+          loadNavigation(collection.id).then(() => {
+            const leaf = firstLeaf(tree.value)
+            if (leaf) {
+              router.push(`/${collection.id}/${leaf.slug}`)
+            }
+          })
+          return true
+        }
       }
 
       for (const shortcut of shortcuts) {

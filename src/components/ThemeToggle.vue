@@ -15,7 +15,7 @@ const tooltip = computed(() => {
 
 <template>
   <button
-    class="p-1 rounded-md text-text-secondary hover:text-text-primary transition-colors"
+    class="p-2.5 -m-1.5 rounded-md text-text-secondary hover:text-text-primary transition-colors"
     :title="tooltip"
     @click="toggleTheme"
   >

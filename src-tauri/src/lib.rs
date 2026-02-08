@@ -53,6 +53,7 @@ pub fn run() {
             commands::get_document,
             commands::search_documents,
             commands::get_tags,
+            commands::get_documents_by_tag,
             commands::get_similar_chunks,
             commands::get_settings,
             commands::save_settings,

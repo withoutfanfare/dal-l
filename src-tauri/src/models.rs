@@ -32,6 +32,7 @@ pub struct Document {
     pub parent_slug: String,
     pub content_html: String,
     pub path: String,
+    pub last_modified: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

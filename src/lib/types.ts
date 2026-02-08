@@ -27,6 +27,7 @@ export interface Document {
   parent_slug: string
   content_html: string
   path: string
+  last_modified: string | null
 }
 
 export interface SearchResult {

@@ -50,7 +50,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU1NDU2MDcxQzZBM0VGOEYKUldTUDc2UEdjV0JGVlJiS3dvR2xKVmtTdjMxc2IyYjlLaUEweHRtdHMwVHVWWXNUQmMyZk9lRDEK",
       "endpoints": [
-        "https://github.com/OWNER/dalil/releases/latest/download/latest.json"
+        "https://github.com/withoutfanfare/dal-l/releases/latest/download/latest.json"
       ]
     }
   }

@@ -18,8 +18,15 @@ const { tree, loading } = useNavigation()
 
     <!-- Navigation tree -->
     <nav class="flex-1 overflow-y-auto px-2 py-1.5" style="-webkit-app-region: no-drag">
-      <div v-if="loading" class="px-3 py-8 text-text-secondary text-xs text-center">
-        Loading...
+      <div v-if="loading" class="px-3 py-4 space-y-2.5 animate-pulse">
+        <div class="h-5 w-3/4 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="h-5 w-1/2 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="h-5 w-5/6 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="h-5 w-2/3 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="h-5 w-3/5 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="h-5 w-4/5 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="h-5 w-1/2 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="h-5 w-3/4 rounded bg-stone-200 dark:bg-stone-700" />
       </div>
       <SidebarSection v-else :nodes="tree" :level="0" />
     </nav>
@@ -31,7 +38,7 @@ const { tree, loading } = useNavigation()
     >
       <ThemeToggle />
       <button
-        class="flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-secondary/80 transition-colors"
+        class="flex items-center justify-center w-8 h-8 -m-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-secondary/80 transition-colors"
         title="Collapse sidebar (Cmd+\)"
         @click="toggleSidebar"
       >

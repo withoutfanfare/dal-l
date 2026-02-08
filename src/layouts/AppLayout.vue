@@ -79,6 +79,12 @@ onUnmounted(() => {
 
 <template>
   <div class="flex h-screen overflow-hidden">
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:dark:bg-stone-800 focus:px-4 focus:py-2 focus:rounded focus:shadow-lg focus:text-stone-900 focus:dark:text-stone-100"
+    >
+      Skip to content
+    </a>
     <!-- Top drag region / toolbar -->
     <div
       class="fixed top-0 left-0 right-0 h-[52px] z-50 flex items-center bg-surface/80 backdrop-blur-sm"
@@ -178,7 +184,7 @@ onUnmounted(() => {
     />
 
     <!-- Main content -->
-    <main class="relative z-10 flex-1 overflow-y-auto pt-[52px]" style="contain: content">
+    <main id="main-content" class="relative z-10 flex-1 overflow-y-auto pt-[52px]" style="contain: content">
       <div class="mx-auto max-w-3xl px-10 py-10">
         <router-view />
       </div>

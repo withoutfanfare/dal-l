@@ -69,7 +69,7 @@ pub fn get_document(db: State<DbState>, slug: String) -> Result<Document, String
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.query_row(
         "SELECT id, collection_id, slug, title, section, sort_order, parent_slug, \
-         content_html, path \
+         content_html, path, last_modified \
          FROM documents WHERE slug = ?",
         [&slug],
         |row| {
@@ -83,6 +83,7 @@ pub fn get_document(db: State<DbState>, slug: String) -> Result<Document, String
                 parent_slug: row.get(6)?,
                 content_html: row.get(7)?,
                 path: row.get(8)?,
+                last_modified: row.get(9)?,
             })
         },
     )
@@ -212,6 +213,35 @@ pub fn get_tags(
     };
 
     results
+}
+
+#[tauri::command]
+pub fn get_documents_by_tag(db: State<DbState>, tag: String) -> Result<Vec<SearchResult>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT d.slug, d.title, d.section, d.collection_id, '' as snippet \
+             FROM documents d \
+             JOIN document_tags dt ON d.id = dt.document_id \
+             JOIN tags t ON t.id = dt.tag_id \
+             WHERE t.tag = ? \
+             ORDER BY d.title",
+        )
+        .map_err(|e| e.to_string())?;
+    let results = stmt
+        .query_map([&tag], |row| {
+            Ok(SearchResult {
+                slug: row.get(0)?,
+                title: row.get(1)?,
+                section: row.get(2)?,
+                collection_id: row.get(3)?,
+                snippet: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    results
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

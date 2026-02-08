@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { getTags } from '@/lib/api'
-import type { Tag } from '@/lib/types'
+import { useRoute, useRouter } from 'vue-router'
+import { getTags, getDocumentsByTag } from '@/lib/api'
+import type { Tag, SearchResult } from '@/lib/types'
 
 const route = useRoute()
+const router = useRouter()
 
 const tag = ref<string>('')
 const tagInfo = ref<Tag | null>(null)
+const documents = ref<SearchResult[]>([])
 const loading = ref(false)
 
-async function fetchTagInfo() {
+async function fetchTagData() {
   const tagParam = route.params.tag as string
   if (!tagParam) return
 
@@ -18,18 +20,27 @@ async function fetchTagInfo() {
   loading.value = true
 
   try {
-    const allTags = await getTags()
+    const [allTags, docs] = await Promise.all([
+      getTags(),
+      getDocumentsByTag(tagParam),
+    ])
     tagInfo.value = allTags.find((t) => t.tag === tagParam) ?? null
+    documents.value = docs
   } catch {
     tagInfo.value = null
+    documents.value = []
   } finally {
     loading.value = false
   }
 }
 
+function navigateToDocument(slug: string) {
+  router.push(`/${slug}`)
+}
+
 watch(
   () => route.params.tag,
-  () => fetchTagInfo(),
+  () => fetchTagData(),
   { immediate: true },
 )
 </script>
@@ -56,18 +67,35 @@ watch(
         <p v-if="tagInfo" class="text-text-secondary mt-2">
           {{ tagInfo.count }} {{ tagInfo.count === 1 ? 'document' : 'documents' }} tagged with "{{ tag }}"
         </p>
-        <p v-else class="text-text-secondary mt-2">
-          No documents found with this tag.
-        </p>
       </header>
 
-      <div class="text-sm text-text-secondary">
-        <p>
-          Document listing by tag requires a backend API that is not yet available.
-          Use the search feature
-          <kbd class="px-1.5 py-0.5 rounded bg-surface-secondary text-xs font-mono">&#8984;K</kbd>
-          to find documents.
-        </p>
+      <!-- Document list -->
+      <div v-if="documents.length > 0" class="space-y-2">
+        <button
+          v-for="doc in documents"
+          :key="doc.slug"
+          class="w-full text-left px-4 py-3 rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors group"
+          @click="navigateToDocument(doc.slug)"
+        >
+          <div class="flex items-center gap-3">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-text-primary truncate group-hover:text-accent-primary transition-colors">
+                {{ doc.title }}
+              </p>
+              <p v-if="doc.section" class="text-xs text-text-secondary mt-0.5 truncate">
+                {{ doc.section }}
+              </p>
+            </div>
+            <span class="shrink-0 text-xs px-2 py-0.5 rounded-full bg-surface-secondary text-text-secondary">
+              {{ doc.collection_id }}
+            </span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Empty state -->
+      <div v-else-if="!loading" class="py-12 text-center text-text-secondary">
+        <p>No documents tagged with "{{ tag }}".</p>
       </div>
     </template>
   </div>

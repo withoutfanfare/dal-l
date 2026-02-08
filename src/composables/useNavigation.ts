@@ -63,6 +63,54 @@ function clearCache() {
   cache.clear()
 }
 
+/**
+ * Find the root section node that matches a section title.
+ * Returns the slug of the first top-level node whose title matches.
+ */
+function findSectionSlug(sectionTitle: string): string | null {
+  for (const node of tree.value) {
+    if (node.title === sectionTitle) {
+      return node.slug
+    }
+  }
+  return null
+}
+
+/**
+ * Check whether a given slug exists somewhere under a navigation node.
+ */
+function containsSlug(node: NavigationTree, slug: string): boolean {
+  if (node.slug === slug) return true
+  for (const child of node.children) {
+    if (containsSlug(child, slug)) return true
+  }
+  return false
+}
+
+/**
+ * Find the ancestry chain of slugs from root to the given slug.
+ * Returns an array of ancestor slugs (excluding the slug itself).
+ */
+function getAncestorSlugs(slug: string): string[] {
+  const ancestors: string[] = []
+
+  function walk(nodes: NavigationTree[], chain: string[]): boolean {
+    for (const node of nodes) {
+      if (node.slug === slug) {
+        ancestors.push(...chain)
+        return true
+      }
+      if (node.has_children && node.children.length > 0) {
+        if (walk(node.children, [...chain, node.slug])) return true
+      }
+    }
+    return false
+  }
+
+  walk(tree.value, [])
+  return ancestors
+}
+
 export function useNavigation() {
-  return { nodes, tree, loading, loadNavigation, clearCache }
+  return { nodes, tree, loading, loadNavigation, clearCache, findSectionSlug, containsSlug, getAncestorSlugs }
 }

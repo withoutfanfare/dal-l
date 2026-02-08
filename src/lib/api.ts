@@ -25,6 +25,10 @@ export async function getTags(collectionId?: string): Promise<Tag[]> {
   return invoke('get_tags', { collectionId })
 }
 
+export async function getDocumentsByTag(tag: string): Promise<SearchResult[]> {
+  return invoke('get_documents_by_tag', { tag })
+}
+
 export async function getSimilarChunks(
   queryEmbedding: number[],
   limit?: number,
