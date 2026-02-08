@@ -1,0 +1,419 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* Light mode colour tokens */
+  --color-surface: #FFFFFF;
+  --color-surface-secondary: #F5F5F3;
+  --color-sidebar: #F9F9F7;
+  --color-text-primary: #1A1A1A;
+  --color-text-secondary: #737373;
+  --color-border: #E5E5E2;
+  --color-accent: #2563EB;
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-surface: #171717;
+  --color-surface-secondary: #262626;
+  --color-sidebar: #1A1A1A;
+  --color-text-primary: #EDEDED;
+  --color-text-secondary: #999999;
+  --color-border: #303030;
+  --color-accent: #60A5FA;
+}
+
+html {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 200ms;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Prevent text selection on UI chrome, re-enable in content areas */
+*:not(input):not(textarea):not([contenteditable='true']) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.prose,
+.prose *,
+[data-selectable],
+[data-selectable] * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Dark mode prose typography */
+.dark .prose {
+  --tw-prose-body: var(--color-text-primary);
+  --tw-prose-headings: var(--color-text-primary);
+  --tw-prose-links: var(--color-accent);
+  --tw-prose-bold: var(--color-text-primary);
+  --tw-prose-code: var(--color-text-primary);
+  --tw-prose-quotes: var(--color-text-secondary);
+  --tw-prose-pre-bg: var(--color-surface-secondary);
+  --tw-prose-hr: var(--color-border);
+  --tw-prose-th-borders: var(--color-border);
+  --tw-prose-td-borders: var(--color-border);
+}
+
+/* Inline code */
+.prose :where(code):not(:where(pre *)) {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  font-weight: 400;
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+  background-color: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.prose :where(code):not(:where(pre *))::before,
+.prose :where(code):not(:where(pre *))::after {
+  content: none;
+}
+
+/* Code blocks */
+.prose pre {
+  border-radius: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-secondary) !important;
+  box-shadow: none;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Shiki dual-theme token colours (class-based dark mode) */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+}
+
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark);
+}
+
+/* Tables */
+.prose table {
+  font-size: 14px;
+  border-collapse: collapse;
+}
+
+.prose thead th {
+  border-bottom: 2px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+}
+
+.prose tbody td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+}
+
+.prose tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Blockquotes */
+.prose blockquote {
+  border-left-width: 2px;
+  padding-left: 1rem;
+  font-style: normal;
+}
+
+/* Lists */
+.prose ul,
+.prose ol {
+  padding-left: 1.25rem;
+}
+
+.prose li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+/* Custom scrollbar (subtle) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-secondary);
+}
+
+/* Sidebar collapse transition */
+.sidebar-transition {
+  transition: width 200ms ease-out;
+}
+
+/* Sidebar resize drag handle */
+.sidebar-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 30;
+  margin-left: -2px;
+  margin-right: -2px;
+  transition: background-color 150ms ease;
+}
+
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-active {
+  background-color: var(--color-accent);
+  opacity: 0.4;
+}
+
+.sidebar-resize-active {
+  opacity: 0.6;
+}
+
+/* Page content fade transition */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 150ms ease;
+}
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+}
+
+/* Sidebar section expand/collapse */
+.section-enter-active,
+.section-leave-active {
+  transition: opacity 150ms ease;
+  overflow: hidden;
+}
+.section-enter-from,
+.section-leave-to {
+  opacity: 0;
+}
+.section-enter-to,
+.section-leave-from {
+  opacity: 1;
+}
+
+/* FTS search highlights */
+.prose mark,
+mark {
+  background-color: #FEF08A;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.dark mark,
+.dark .prose mark {
+  background-color: #854D0E;
+  color: var(--color-text-primary);
+}
+
+/* Hide empty code blocks */
+.prose pre:has(> code:only-child:empty) {
+  display: none;
+}
+
+/* Heading anchor link affordance */
+.prose h2,
+.prose h3 {
+  position: relative;
+}
+
+.prose .heading-anchor {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35em;
+  opacity: 0;
+  color: var(--color-text-secondary);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.prose h2:hover .heading-anchor,
+.prose h3:hover .heading-anchor,
+.prose .heading-anchor:focus {
+  opacity: 0.6;
+}
+
+.prose .heading-anchor:hover {
+  opacity: 1;
+  color: var(--color-accent);
+}
+
+.prose .heading-anchor-copied {
+  opacity: 1;
+  color: #16a34a;
+  transition: color 150ms ease;
+}
+
+.prose .heading-anchor-copied::after {
+  content: 'Copied';
+  position: absolute;
+  left: calc(100% + 0.35em);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 500;
+  color: #16a34a;
+  white-space: nowrap;
+  animation: fade-in-out 1.5s ease forwards;
+}
+
+@keyframes fade-in-out {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---- Microanimations ---- */
+
+/* Sidebar links */
+nav a,
+nav button {
+  transition: background-color 150ms ease, color 150ms ease, transform 100ms ease;
+}
+
+nav a:active,
+nav button:active {
+  transform: scale(0.98);
+}
+
+/* Toolbar buttons */
+[style*="no-drag"] button {
+  transition: background-color 150ms ease, color 150ms ease, transform 80ms ease;
+}
+
+[style*="no-drag"] button:active {
+  transform: scale(0.94);
+}
+
+/* Content links */
+.prose a {
+  transition: color 150ms ease;
+}
+
+/* Fade-in for main content — only on initial mount via data attribute */
+@keyframes content-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.prose[data-enter] {
+  animation: content-fade-in 200ms ease-out;
+}
+
+/* ---- Ambient background blobs ---- */
+
+.ambient-blobs {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.18;
+  will-change: transform;
+  contain: strict;
+}
+
+.dark .ambient-blob {
+  opacity: 0.10;
+}
+
+/* Pause blob animations when the window is not visible */
+.page-hidden .ambient-blob {
+  animation-play-state: paused;
+}
+
+.blob-1 {
+  width: 600px;
+  height: 600px;
+  background: var(--color-accent);
+  top: -10%;
+  right: -5%;
+  animation: blob-drift-1 25s ease-in-out infinite;
+}
+
+.blob-2 {
+  width: 500px;
+  height: 500px;
+  background: #8B5CF6;
+  bottom: -8%;
+  left: -5%;
+  animation: blob-drift-2 30s ease-in-out infinite;
+}
+
+.blob-3 {
+  width: 400px;
+  height: 400px;
+  background: #06B6D4;
+  top: 40%;
+  left: 30%;
+  animation: blob-drift-3 20s ease-in-out infinite;
+}
+
+@keyframes blob-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(-40px, 30px) scale(1.05); }
+  66%      { transform: translate(20px, -20px) scale(0.95); }
+}
+
+@keyframes blob-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(30px, -40px) scale(1.08); }
+  66%      { transform: translate(-20px, 20px) scale(0.92); }
+}
+
+@keyframes blob-drift-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(-30px, 30px) scale(1.1); }
+}
