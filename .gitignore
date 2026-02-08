@@ -22,6 +22,9 @@ dalil.db
 *.swo
 *~
 
+# Private (local-only notes and secrets)
+@private/
+
 # OS
 .DS_Store
 Thumbs.db
