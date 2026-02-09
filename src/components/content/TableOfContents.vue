@@ -76,7 +76,7 @@ onUnmounted(() => {
   <!-- Mobile: floating button + popover (below 2xl) -->
   <div
     v-if="showMobileButton"
-    class="2xl:hidden fixed bottom-6 right-[4.5rem] z-40"
+    class="2xl:hidden fixed top-[68px] right-6 z-40"
   >
     <Transition
       enter-active-class="duration-150 ease-out"
@@ -88,7 +88,7 @@ onUnmounted(() => {
     >
       <div
         v-if="mobileOpen"
-        class="toc-mobile-popover absolute bottom-12 right-0 w-64 max-h-72 overflow-y-auto rounded-xl bg-surface shadow-2xl ring-1 ring-border p-3"
+        class="toc-mobile-popover absolute top-12 right-0 w-64 max-h-72 overflow-y-auto rounded-xl bg-surface shadow-2xl ring-1 ring-border p-3"
       >
         <p class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
           On this page

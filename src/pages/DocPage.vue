@@ -198,7 +198,7 @@ watch(
   >
     <button
       v-if="showBackToTop"
-      class="fixed bottom-6 right-6 z-40 flex items-center justify-center w-9 h-9 rounded-full bg-surface shadow-lg ring-1 ring-border text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
+      class="fixed bottom-6 right-6 z-[100] flex items-center justify-center w-9 h-9 rounded-full bg-surface shadow-lg ring-1 ring-border text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
       title="Back to top"
       @click="scrollToTop"
     >

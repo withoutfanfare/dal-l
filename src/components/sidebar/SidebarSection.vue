@@ -43,7 +43,7 @@ watch(currentSlug, (slug) => {
       <template v-if="node.has_children && node.children.length > 0">
         <button
           class="flex items-center gap-1.5 w-full px-2 py-[5px] text-left text-[13px] rounded-md transition-colors hover:bg-surface-secondary/80"
-          :class="isAncestorOfActive(node) ? 'border-l-2 border-accent' : 'border-l-2 border-transparent'"
+          :class="isAncestorOfActive(node) ? 'text-text-primary' : ''"
           :style="{ paddingLeft: `${(props.level * 12) + 8}px` }"
           @click="toggleSection(node.slug)"
         >
@@ -59,7 +59,7 @@ watch(currentSlug, (slug) => {
           </svg>
           <span
             class="font-medium truncate"
-            :class="isAncestorOfActive(node) ? 'text-accent' : 'text-text-secondary'"
+            :class="isAncestorOfActive(node) ? 'text-text-primary' : 'text-text-secondary'"
           >
             {{ node.title }}
           </span>
