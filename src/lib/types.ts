@@ -78,6 +78,18 @@ export interface ProjectBuildEvent {
   error?: string
 }
 
+export interface ProjectStats {
+  documentCount: number
+  collectionCount: number
+  tagCount: number
+  chunkCount: number
+  dbSizeBytes: number
+}
+
+export interface AppPreferences {
+  editorCommand: string | null
+}
+
 export type AiProvider = 'openai' | 'anthropic' | 'ollama'
 
 export interface Settings {

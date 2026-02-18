@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct Collection {
@@ -60,7 +60,23 @@ pub struct ScoredChunk {
     pub score: f64,
 }
 
-#[derive(Debug, Serialize, serde::Deserialize, Clone)]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStats {
+    pub document_count: i32,
+    pub collection_count: i32,
+    pub tag_count: i32,
+    pub chunk_count: i32,
+    pub db_size_bytes: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppPreferences {
+    pub editor_command: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub openai_api_key: Option<String>,
     pub anthropic_api_key: Option<String>,
@@ -87,7 +103,7 @@ impl Settings {
     }
 }
 
-#[derive(Debug, Serialize, serde::Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AiProvider {
     Openai,

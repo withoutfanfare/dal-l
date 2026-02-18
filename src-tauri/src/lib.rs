@@ -42,8 +42,35 @@ pub fn run() {
             // ProjectManager: manages multiple project DB connections
             let registry = load_registry(app.handle()).unwrap_or_default();
             let mut manager = ProjectManager::new(registry);
+
+            // Open the built-in handbook connection
             let handbook_conn = init_db(app.handle());
             manager.connections.insert("engineering-handbook".to_string(), handbook_conn);
+
+            // Restore connections for user-added projects
+            let app_data_dir = app.path().app_data_dir()?;
+            let user_projects: Vec<_> = manager.registry.projects.iter()
+                .filter(|p| !p.built_in)
+                .filter_map(|p| p.db_path.as_ref().map(|db| (p.id.clone(), app_data_dir.join(db))))
+                .collect();
+            for (id, db_path) in user_projects {
+                if db_path.exists() {
+                    if let Err(e) = manager.open_connection(&id, &db_path) {
+                        eprintln!("Warning: failed to open database for project '{}': {}", id, e);
+                    }
+                }
+            }
+
+            // If the active project has no connection, fall back to the handbook
+            if !manager.connections.contains_key(&manager.registry.active_project_id) {
+                eprintln!(
+                    "Warning: active project '{}' has no database — falling back to engineering-handbook",
+                    manager.registry.active_project_id
+                );
+                manager.registry.active_project_id = "engineering-handbook".to_string();
+                let _ = projects::save_registry(app.handle(), &manager.registry);
+            }
+
             app.manage(std::sync::Mutex::new(manager));
 
             let http_client = reqwest::Client::builder()
@@ -73,6 +100,10 @@ pub fn run() {
             commands::add_project,
             commands::rebuild_project,
             commands::remove_project,
+            commands::get_project_stats,
+            commands::open_in_editor,
+            commands::get_preferences,
+            commands::save_preferences,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

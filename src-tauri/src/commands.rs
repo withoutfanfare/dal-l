@@ -1,10 +1,86 @@
 use crate::ai;
-use crate::db::HttpClient;
+use crate::db::{handbook_db_path, HttpClient};
 use crate::models::*;
 use crate::projects::ProjectManager;
 use crate::settings;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
+
+#[tauri::command]
+pub fn get_project_stats(
+    app: AppHandle,
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+    project_id: String,
+) -> Result<ProjectStats, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+
+    let conn = mgr
+        .connections
+        .get(&project_id)
+        .ok_or_else(|| format!("No database connection for project '{}'", project_id))?;
+
+    let document_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .unwrap_or(0);
+    let collection_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM collections", [], |row| row.get(0))
+        .unwrap_or(0);
+    let tag_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM tags", [], |row| row.get(0))
+        .unwrap_or(0);
+    let chunk_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    // Determine DB file path for size calculation
+    let project = mgr.registry.projects.iter().find(|p| p.id == project_id);
+    let db_size_bytes = if let Some(p) = project {
+        if p.built_in {
+            let path = handbook_db_path(&app);
+            std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
+        } else if let Some(ref relative_path) = p.db_path {
+            let app_data_dir = app.path().app_data_dir().unwrap_or_default();
+            let path = app_data_dir.join(relative_path);
+            std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    Ok(ProjectStats {
+        document_count,
+        collection_count,
+        tag_count,
+        chunk_count,
+        db_size_bytes,
+    })
+}
+
+#[tauri::command]
+pub async fn open_in_editor(
+    app: AppHandle,
+    editor_command: String,
+    path: String,
+) -> Result<(), String> {
+    app.shell()
+        .command(&editor_command)
+        .args([&path])
+        .spawn()
+        .map_err(|e| format!("Failed to open editor '{}': {}", editor_command, e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_preferences(app: AppHandle) -> Result<AppPreferences, String> {
+    settings::load_preferences(&app)
+}
+
+#[tauri::command]
+pub fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result<(), String> {
+    settings::save_preferences_to_store(&app, &preferences)
+}
 
 fn unix_timestamp() -> String {
     std::time::SystemTime::now()
@@ -551,11 +627,8 @@ pub async fn rebuild_project(
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let db_path = app_data_dir.join(&db_relative_path);
 
-    // Close existing connection before rebuild
-    {
-        let mut mgr = manager.lock().map_err(|e| e.to_string())?;
-        mgr.close_connection(&project_id);
-    }
+    // Keep the old connection alive during the build so queries still work.
+    // We only swap it out after the new database is ready.
 
     let _ = app.emit("project-build-started", serde_json::json!({ "projectId": &project_id }));
 
@@ -599,9 +672,10 @@ pub async fn rebuild_project(
         return Err(format!("Build failed: {}", stderr));
     }
 
-    // Reopen connection
+    // Build succeeded — close old connection and open new one in a single lock
     {
         let mut mgr = manager.lock().map_err(|e| e.to_string())?;
+        mgr.close_connection(&project_id);
         mgr.open_connection(&project_id, &db_path)?;
 
         // Update last_built timestamp

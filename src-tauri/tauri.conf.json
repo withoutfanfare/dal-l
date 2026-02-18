@@ -42,6 +42,9 @@
     }
   },
   "plugins": {
+    "shell": {
+      "open": "((mailto:\\w+)|(tel:\\w+)|(https?://\\w+)).+|/.+"
+    },
     "deep-link": {
       "desktop": {
         "schemes": ["dalil"]

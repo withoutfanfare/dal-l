@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Collection, NavigationNode, Document, SearchResult, Tag, Chunk, Settings, AiProvider, Project } from './types'
+import type { Collection, NavigationNode, Document, SearchResult, Tag, Chunk, Settings, AiProvider, Project, ProjectStats, AppPreferences } from './types'
 
 export async function getCollections(): Promise<Collection[]> {
   return invoke('get_collections')
@@ -74,4 +74,20 @@ export async function rebuildProject(projectId: string): Promise<void> {
 
 export async function removeProject(projectId: string): Promise<void> {
   return invoke('remove_project', { projectId })
+}
+
+export async function getProjectStats(projectId: string): Promise<ProjectStats> {
+  return invoke('get_project_stats', { projectId })
+}
+
+export async function openInEditor(editorCommand: string, path: string): Promise<void> {
+  return invoke('open_in_editor', { editorCommand, path })
+}
+
+export async function getPreferences(): Promise<AppPreferences> {
+  return invoke('get_preferences')
+}
+
+export async function savePreferences(preferences: AppPreferences): Promise<void> {
+  return invoke('save_preferences', { preferences })
 }

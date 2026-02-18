@@ -14,6 +14,11 @@ const router = createRouter({
       component: () => import('@/pages/TagPage.vue'),
     },
     {
+      path: '/projects',
+      name: 'projects',
+      component: () => import('@/pages/ProjectsPage.vue'),
+    },
+    {
       path: '/:collection/:slug(.*)',
       name: 'doc',
       component: () => import('@/pages/DocPage.vue'),
