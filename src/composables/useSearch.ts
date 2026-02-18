@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue'
 import { searchDocuments } from '@/lib/api'
 import type { SearchResult } from '@/lib/types'
+import { useBookmarks } from './useBookmarks'
 
 const query = ref('')
 const results = ref<SearchResult[]>([])
@@ -10,6 +11,7 @@ const collectionFilter = ref<string | undefined>(undefined)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let requestId = 0
+const { byDocSlug } = useBookmarks()
 
 function formatQuery(raw: string): string {
   const trimmed = raw.trim()
@@ -55,7 +57,12 @@ function performSearch() {
     try {
       const data = await searchDocuments(formatQuery(trimmed), collectionFilter.value, 20)
       if (thisRequest === requestId) {
-        results.value = data
+        results.value = [...data].sort((a, b) => {
+          const aBookmarked = (byDocSlug.value.get(a.slug)?.length ?? 0) > 0
+          const bBookmarked = (byDocSlug.value.get(b.slug)?.length ?? 0) > 0
+          if (aBookmarked === bBookmarked) return 0
+          return aBookmarked ? -1 : 1
+        })
         error.value = null
       }
     } catch (e) {

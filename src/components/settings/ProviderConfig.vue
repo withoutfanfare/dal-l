@@ -37,6 +37,12 @@ const validationError = computed(() => {
     }
   }
 
+  if (props.provider === 'gemini') {
+    if (!val.startsWith('AIza') && !isMasked(val)) {
+      return 'Gemini API key usually starts with "AIza"'
+    }
+  }
+
   if (props.isUrl) {
     try {
       const url = new URL(val)

@@ -1,5 +1,5 @@
-use crate::projects::ProjectManager;
 use crate::models::{AiProvider, ScoredChunk, Settings};
+use crate::projects::ProjectManager;
 use rusqlite::params;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -14,6 +14,58 @@ static HAS_CHUNKS_FTS: OnceLock<bool> = OnceLock::new();
 /// Cached Ollama availability status with a 30-second TTL.
 static OLLAMA_AVAILABLE_CACHE: Mutex<Option<(bool, Instant)>> = Mutex::new(None);
 const OLLAMA_CACHE_TTL_SECS: u64 = 30;
+static CANCELLED_REQUESTS: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiResponseChunkEvent {
+    pub request_id: String,
+    pub content: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiResponseDoneEvent {
+    pub request_id: String,
+    pub cancelled: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiResponseErrorEvent {
+    pub request_id: String,
+    pub message: String,
+}
+
+pub fn error_event(request_id: &str, message: &str) -> AiResponseErrorEvent {
+    AiResponseErrorEvent {
+        request_id: request_id.to_string(),
+        message: message.to_string(),
+    }
+}
+
+pub fn cancel_request(request_id: &str) -> Result<(), String> {
+    let mut guard = CANCELLED_REQUESTS.lock().map_err(|e| e.to_string())?;
+    let set = guard.get_or_insert_with(HashSet::new);
+    set.insert(request_id.to_string());
+    Ok(())
+}
+
+fn clear_cancel_request(request_id: &str) {
+    if let Ok(mut guard) = CANCELLED_REQUESTS.lock() {
+        if let Some(set) = guard.as_mut() {
+            set.remove(request_id);
+        }
+    }
+}
+
+fn is_cancelled(request_id: &str) -> bool {
+    CANCELLED_REQUESTS
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|set| set.contains(request_id)))
+        .unwrap_or(false)
+}
 
 // -- FTS5 query sanitisation --
 
@@ -57,6 +109,7 @@ pub async fn generate_embedding(
 ) -> Result<Vec<f32>, String> {
     match provider {
         AiProvider::Openai => generate_openai_embedding(client, settings, text).await,
+        AiProvider::Gemini => generate_gemini_embedding(client, settings, text).await,
         AiProvider::Ollama => generate_ollama_embedding(client, settings, text).await,
         // Anthropic has no embedding API; fall back to Ollama, then error
         AiProvider::Anthropic => {
@@ -64,14 +117,20 @@ pub async fn generate_embedding(
                 generate_ollama_embedding(client, settings, text).await
             } else if settings.openai_api_key.is_some() {
                 generate_openai_embedding(client, settings, text).await
+            } else if settings.gemini_api_key.is_some() {
+                generate_gemini_embedding(client, settings, text).await
             } else {
-                Err("Anthropic does not provide an embedding API. Please configure Ollama or OpenAI for embeddings.".to_string())
+                Err("Anthropic does not provide an embedding API. Please configure Ollama, OpenAI, or Gemini for embeddings.".to_string())
             }
         }
     }
 }
 
-async fn generate_openai_embedding(client: &reqwest::Client, settings: &Settings, text: &str) -> Result<Vec<f32>, String> {
+async fn generate_openai_embedding(
+    client: &reqwest::Client,
+    settings: &Settings,
+    text: &str,
+) -> Result<Vec<f32>, String> {
     let api_key = settings
         .openai_api_key
         .as_ref()
@@ -118,7 +177,11 @@ async fn generate_openai_embedding(client: &reqwest::Client, settings: &Settings
         .ok_or_else(|| "No embedding returned from OpenAI".to_string())
 }
 
-async fn generate_ollama_embedding(client: &reqwest::Client, settings: &Settings, text: &str) -> Result<Vec<f32>, String> {
+async fn generate_ollama_embedding(
+    client: &reqwest::Client,
+    settings: &Settings,
+    text: &str,
+) -> Result<Vec<f32>, String> {
     let base_url = settings
         .ollama_base_url
         .as_deref()
@@ -153,6 +216,57 @@ async fn generate_ollama_embedding(client: &reqwest::Client, settings: &Settings
         .map_err(|e| format!("Failed to parse Ollama embedding response: {}", e))?;
 
     Ok(parsed.embedding)
+}
+
+async fn generate_gemini_embedding(
+    client: &reqwest::Client,
+    settings: &Settings,
+    text: &str,
+) -> Result<Vec<f32>, String> {
+    let api_key = settings
+        .gemini_api_key
+        .as_ref()
+        .ok_or("Gemini API key not configured")?;
+
+    let body = serde_json::json!({
+        "model": "models/text-embedding-004",
+        "content": {
+            "parts": [{ "text": text }]
+        }
+    });
+
+    let resp = client
+        .post(format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={}",
+            api_key
+        ))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Gemini embedding request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Gemini API error ({}): {}", status, text));
+    }
+
+    #[derive(Deserialize)]
+    struct GeminiEmbeddingResponse {
+        embedding: GeminiEmbeddingValues,
+    }
+
+    #[derive(Deserialize)]
+    struct GeminiEmbeddingValues {
+        values: Vec<f32>,
+    }
+
+    let parsed: GeminiEmbeddingResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Gemini embedding response: {}", e))?;
+
+    Ok(parsed.embedding.values)
 }
 
 async fn is_ollama_available(client: &reqwest::Client, settings: &Settings) -> bool {
@@ -267,7 +381,11 @@ pub fn vector_search(
         )
         .collect();
 
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scored.truncate(limit);
     Ok(scored)
 }
@@ -275,17 +393,21 @@ pub fn vector_search(
 /// Extract meaningful keywords from a query, stripping common stop words.
 fn extract_keywords(query: &str) -> Vec<String> {
     const STOP_WORDS: &[&str] = &[
-        "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from",
-        "has", "have", "how", "i", "in", "is", "it", "its", "my", "not", "of", "on", "or",
-        "our", "should", "so", "that", "the", "their", "them", "then", "there", "these",
-        "they", "this", "to", "was", "we", "what", "when", "where", "which", "who", "why",
-        "will", "with", "would", "you", "your",
+        "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from", "has",
+        "have", "how", "i", "in", "is", "it", "its", "my", "not", "of", "on", "or", "our",
+        "should", "so", "that", "the", "their", "them", "then", "there", "these", "they", "this",
+        "to", "was", "we", "what", "when", "where", "which", "who", "why", "will", "with", "would",
+        "you", "your",
     ];
 
     query
         .split_whitespace()
         .map(|w| w.to_lowercase())
-        .map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>())
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+        })
         .filter(|w| w.len() >= 2 && !STOP_WORDS.contains(&w.as_str()))
         .collect()
 }
@@ -480,13 +602,17 @@ pub async fn stream_chat_response(
     client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
+    request_id: &str,
     provider: &AiProvider,
     messages: &[AiChatMessage],
 ) -> Result<(), String> {
     match provider {
-        AiProvider::Openai => stream_openai(client, app, settings, messages).await,
-        AiProvider::Anthropic => stream_anthropic(client, app, settings, messages).await,
-        AiProvider::Ollama => stream_ollama(client, app, settings, messages).await,
+        AiProvider::Openai => stream_openai(client, app, settings, request_id, messages).await,
+        AiProvider::Anthropic => {
+            stream_anthropic(client, app, settings, request_id, messages).await
+        }
+        AiProvider::Gemini => stream_gemini(client, app, settings, request_id, messages).await,
+        AiProvider::Ollama => stream_ollama(client, app, settings, request_id, messages).await,
     }
 }
 
@@ -494,6 +620,7 @@ async fn stream_openai(
     client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
+    request_id: &str,
     messages: &[AiChatMessage],
 ) -> Result<(), String> {
     let api_key = settings
@@ -537,26 +664,63 @@ async fn stream_openai(
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
-                    if let Err(e) = app.emit("ai-response-done", ()) {
+                    if let Err(e) = app.emit(
+                        "ai-response-done",
+                        AiResponseDoneEvent {
+                            request_id: request_id.to_string(),
+                            cancelled: false,
+                        },
+                    ) {
                         eprintln!("Warning: failed to emit ai-response-done: {}", e);
                     }
+                    clear_cancel_request(request_id);
                     return Ok(());
                 }
 
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                     if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
-                        if app.emit("ai-response-chunk", content).is_err() {
+                        if app
+                            .emit(
+                                "ai-response-chunk",
+                                AiResponseChunkEvent {
+                                    request_id: request_id.to_string(),
+                                    content: content.to_string(),
+                                },
+                            )
+                            .is_err()
+                        {
                             break 'outer;
                         }
                     }
                 }
             }
         }
+
+        if is_cancelled(request_id) {
+            if let Err(e) = app.emit(
+                "ai-response-done",
+                AiResponseDoneEvent {
+                    request_id: request_id.to_string(),
+                    cancelled: true,
+                },
+            ) {
+                eprintln!("Warning: failed to emit ai-response-done: {}", e);
+            }
+            clear_cancel_request(request_id);
+            return Ok(());
+        }
     }
 
-    if let Err(e) = app.emit("ai-response-done", ()) {
+    if let Err(e) = app.emit(
+        "ai-response-done",
+        AiResponseDoneEvent {
+            request_id: request_id.to_string(),
+            cancelled: false,
+        },
+    ) {
         eprintln!("Warning: failed to emit ai-response-done: {}", e);
     }
+    clear_cancel_request(request_id);
     Ok(())
 }
 
@@ -564,6 +728,7 @@ async fn stream_anthropic(
     client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
+    request_id: &str,
     messages: &[AiChatMessage],
 ) -> Result<(), String> {
     let api_key = settings
@@ -634,15 +799,31 @@ async fn stream_anthropic(
                     match event_type {
                         "content_block_delta" => {
                             if let Some(text) = parsed["delta"]["text"].as_str() {
-                                if app.emit("ai-response-chunk", text).is_err() {
+                                if app
+                                    .emit(
+                                        "ai-response-chunk",
+                                        AiResponseChunkEvent {
+                                            request_id: request_id.to_string(),
+                                            content: text.to_string(),
+                                        },
+                                    )
+                                    .is_err()
+                                {
                                     break 'outer;
                                 }
                             }
                         }
                         "message_stop" => {
-                            if let Err(e) = app.emit("ai-response-done", ()) {
+                            if let Err(e) = app.emit(
+                                "ai-response-done",
+                                AiResponseDoneEvent {
+                                    request_id: request_id.to_string(),
+                                    cancelled: false,
+                                },
+                            ) {
                                 eprintln!("Warning: failed to emit ai-response-done: {}", e);
                             }
+                            clear_cancel_request(request_id);
                             return Ok(());
                         }
                         _ => {}
@@ -650,11 +831,32 @@ async fn stream_anthropic(
                 }
             }
         }
+
+        if is_cancelled(request_id) {
+            if let Err(e) = app.emit(
+                "ai-response-done",
+                AiResponseDoneEvent {
+                    request_id: request_id.to_string(),
+                    cancelled: true,
+                },
+            ) {
+                eprintln!("Warning: failed to emit ai-response-done: {}", e);
+            }
+            clear_cancel_request(request_id);
+            return Ok(());
+        }
     }
 
-    if let Err(e) = app.emit("ai-response-done", ()) {
+    if let Err(e) = app.emit(
+        "ai-response-done",
+        AiResponseDoneEvent {
+            request_id: request_id.to_string(),
+            cancelled: false,
+        },
+    ) {
         eprintln!("Warning: failed to emit ai-response-done: {}", e);
     }
+    clear_cancel_request(request_id);
     Ok(())
 }
 
@@ -662,6 +864,7 @@ async fn stream_ollama(
     client: &reqwest::Client,
     app: &AppHandle,
     settings: &Settings,
+    request_id: &str,
     messages: &[AiChatMessage],
 ) -> Result<(), String> {
     let base_url = settings
@@ -716,24 +919,199 @@ async fn stream_ollama(
 
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
                 if let Some(content) = parsed["message"]["content"].as_str() {
-                    if app.emit("ai-response-chunk", content).is_err() {
+                    if app
+                        .emit(
+                            "ai-response-chunk",
+                            AiResponseChunkEvent {
+                                request_id: request_id.to_string(),
+                                content: content.to_string(),
+                            },
+                        )
+                        .is_err()
+                    {
                         break 'outer;
                     }
                 }
 
                 if parsed["done"].as_bool() == Some(true) {
-                    if let Err(e) = app.emit("ai-response-done", ()) {
+                    if let Err(e) = app.emit(
+                        "ai-response-done",
+                        AiResponseDoneEvent {
+                            request_id: request_id.to_string(),
+                            cancelled: false,
+                        },
+                    ) {
                         eprintln!("Warning: failed to emit ai-response-done: {}", e);
                     }
+                    clear_cancel_request(request_id);
                     return Ok(());
                 }
             }
         }
+
+        if is_cancelled(request_id) {
+            if let Err(e) = app.emit(
+                "ai-response-done",
+                AiResponseDoneEvent {
+                    request_id: request_id.to_string(),
+                    cancelled: true,
+                },
+            ) {
+                eprintln!("Warning: failed to emit ai-response-done: {}", e);
+            }
+            clear_cancel_request(request_id);
+            return Ok(());
+        }
     }
 
-    if let Err(e) = app.emit("ai-response-done", ()) {
+    if let Err(e) = app.emit(
+        "ai-response-done",
+        AiResponseDoneEvent {
+            request_id: request_id.to_string(),
+            cancelled: false,
+        },
+    ) {
         eprintln!("Warning: failed to emit ai-response-done: {}", e);
     }
+    clear_cancel_request(request_id);
+    Ok(())
+}
+
+async fn stream_gemini(
+    client: &reqwest::Client,
+    app: &AppHandle,
+    settings: &Settings,
+    request_id: &str,
+    messages: &[AiChatMessage],
+) -> Result<(), String> {
+    let api_key = settings
+        .gemini_api_key
+        .as_ref()
+        .ok_or("Gemini API key not configured")?;
+
+    let system_instruction = messages
+        .iter()
+        .find(|m| m.role == "system")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+    let user_prompt = messages
+        .iter()
+        .filter(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let body = serde_json::json!({
+        "systemInstruction": {
+            "parts": [{ "text": system_instruction }]
+        },
+        "contents": [{
+            "role": "user",
+            "parts": [{ "text": user_prompt }]
+        }]
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
+        settings.gemini_model(),
+        api_key
+    );
+
+    let resp = client
+        .post(url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Gemini request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Gemini API error ({}): {}", status, text));
+    }
+
+    use futures_util::StreamExt;
+    let mut stream = resp.bytes_stream();
+    let mut buffer = String::new();
+    let mut emitted_text = String::new();
+
+    'outer: while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(line_end) = buffer.find('\n') {
+            let line: String = buffer.drain(..=line_end).collect();
+            let line = line.trim();
+
+            if let Some(data) = line.strip_prefix("data: ") {
+                if data == "[DONE]" {
+                    if let Err(e) = app.emit(
+                        "ai-response-done",
+                        AiResponseDoneEvent {
+                            request_id: request_id.to_string(),
+                            cancelled: false,
+                        },
+                    ) {
+                        eprintln!("Warning: failed to emit ai-response-done: {}", e);
+                    }
+                    clear_cancel_request(request_id);
+                    return Ok(());
+                }
+
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(text) =
+                        parsed["candidates"][0]["content"]["parts"][0]["text"].as_str()
+                    {
+                        let delta = if let Some(suffix) = text.strip_prefix(&emitted_text) {
+                            suffix.to_string()
+                        } else {
+                            text.to_string()
+                        };
+                        if !delta.is_empty() {
+                            emitted_text.push_str(&delta);
+                            if app
+                                .emit(
+                                    "ai-response-chunk",
+                                    AiResponseChunkEvent {
+                                        request_id: request_id.to_string(),
+                                        content: delta,
+                                    },
+                                )
+                                .is_err()
+                            {
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if is_cancelled(request_id) {
+            if let Err(e) = app.emit(
+                "ai-response-done",
+                AiResponseDoneEvent {
+                    request_id: request_id.to_string(),
+                    cancelled: true,
+                },
+            ) {
+                eprintln!("Warning: failed to emit ai-response-done: {}", e);
+            }
+            clear_cancel_request(request_id);
+            return Ok(());
+        }
+    }
+
+    if let Err(e) = app.emit(
+        "ai-response-done",
+        AiResponseDoneEvent {
+            request_id: request_id.to_string(),
+            cancelled: false,
+        },
+    ) {
+        eprintln!("Warning: failed to emit ai-response-done: {}", e);
+    }
+    clear_cancel_request(request_id);
     Ok(())
 }
 
@@ -797,6 +1175,29 @@ pub async fn test_provider_connection(
                 Err(format!("Anthropic API error ({}): {}", status, text))
             }
         }
+        AiProvider::Gemini => {
+            let api_key = settings
+                .gemini_api_key
+                .as_ref()
+                .ok_or("Gemini API key not configured")?;
+
+            let resp = client
+                .get(format!(
+                    "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+                    api_key
+                ))
+                .send()
+                .await
+                .map_err(|e| format!("Connection failed: {}", e))?;
+
+            if resp.status().is_success() {
+                Ok("Gemini connection successful".to_string())
+            } else {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                Err(format!("Gemini API error ({}): {}", status, text))
+            }
+        }
         AiProvider::Ollama => {
             let base_url = settings
                 .ollama_base_url
@@ -824,9 +1225,11 @@ pub async fn test_provider_connection(
 pub async fn ask_question_rag(
     client: reqwest::Client,
     app: AppHandle,
+    request_id: String,
     question: String,
     provider: AiProvider,
 ) -> Result<(), String> {
+    clear_cancel_request(&request_id);
     let settings = crate::settings::load_settings(&app)?;
 
     // Step 1: Generate query embedding
@@ -851,7 +1254,10 @@ pub async fn ask_question_rag(
     let messages = build_rag_prompt(&chunks, &question);
 
     // Step 4: Stream response
-    stream_chat_response(&client, &app, &settings, &provider, &messages).await?;
-
-    Ok(())
+    let result =
+        stream_chat_response(&client, &app, &settings, &request_id, &provider, &messages).await;
+    if result.is_err() {
+        clear_cancel_request(&request_id);
+    }
+    result
 }

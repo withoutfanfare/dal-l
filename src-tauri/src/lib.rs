@@ -4,10 +4,12 @@ mod db;
 mod models;
 mod projects;
 mod settings;
+mod user_state;
 
 use db::{init_db, HttpClient};
 use projects::{load_registry, ProjectManager};
 use tauri::Manager;
+use user_state::{init_user_state_db, UserStateDb};
 
 #[cfg(target_os = "macos")]
 fn set_dock_icon() {
@@ -72,6 +74,8 @@ pub fn run() {
             }
 
             app.manage(std::sync::Mutex::new(manager));
+            let user_state = init_user_state_db(app.handle())?;
+            app.manage(UserStateDb(std::sync::Mutex::new(user_state)));
 
             let http_client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
@@ -104,6 +108,31 @@ pub fn run() {
             commands::open_in_editor,
             commands::get_preferences,
             commands::save_preferences,
+            commands::list_bookmarks,
+            commands::upsert_bookmark,
+            commands::remove_bookmark,
+            commands::repair_bookmark_target,
+            commands::touch_bookmark_opened,
+            commands::list_bookmark_folders,
+            commands::create_bookmark_folder,
+            commands::delete_bookmark_folder,
+            commands::list_bookmark_tags,
+            commands::create_bookmark_tag,
+            commands::delete_bookmark_tag,
+            commands::list_bookmark_relations,
+            commands::bulk_delete_bookmarks,
+            commands::bulk_set_bookmark_folder,
+            commands::bulk_set_bookmark_tags,
+            commands::mark_document_viewed,
+            commands::get_recent_documents,
+            commands::get_updated_documents,
+            commands::get_project_change_feed,
+            commands::get_doc_note,
+            commands::save_doc_note,
+            commands::list_doc_highlights,
+            commands::add_doc_highlight,
+            commands::delete_doc_highlight,
+            commands::cancel_ai_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

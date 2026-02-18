@@ -90,14 +90,89 @@ export interface AppPreferences {
   editorCommand: string | null
 }
 
-export type AiProvider = 'openai' | 'anthropic' | 'ollama'
+export interface Bookmark {
+  id: number
+  projectId: string
+  collectionId: string
+  docSlug: string
+  anchorId: string | null
+  titleSnapshot: string
+  createdAt: number
+  updatedAt: number
+  lastOpenedAt: number | null
+  orderIndex: number
+}
+
+export interface BookmarkFolder {
+  id: number
+  projectId: string
+  name: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface BookmarkTagEntity {
+  id: number
+  projectId: string
+  name: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface BookmarkRelations {
+  bookmarkId: number
+  folderIds: number[]
+  tagIds: number[]
+}
+
+export interface DocActivityItem {
+  docSlug: string
+  collectionId: string
+  title: string
+  section: string
+  lastModified: string | null
+  lastViewedAt: number | null
+  updatedSinceViewed: boolean
+}
+
+export interface DocNote {
+  projectId: string
+  docSlug: string
+  note: string
+  updatedAt: number
+}
+
+export interface DocHighlight {
+  id: number
+  projectId: string
+  docSlug: string
+  anchorId: string | null
+  selectedText: string
+  contextText: string | null
+  createdAt: number
+}
+
+export interface ProjectChangeFeedItem {
+  id: number
+  projectId: string
+  commitHash: string
+  author: string
+  committedAt: string
+  changedFiles: string[]
+  changedDocSlugs: string[]
+  recordedAt: number
+}
+
+export type AiProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
 
 export interface Settings {
   openai_api_key: string | null
   anthropic_api_key: string | null
+  gemini_api_key: string | null
   ollama_base_url: string | null
   preferred_provider: string | null
   anthropic_model: string | null
+  gemini_model: string | null
 }
 
 export interface AiMessage {

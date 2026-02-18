@@ -1,24 +1,34 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import { useSearch } from '@/composables/useSearch'
 import { useCollections } from '@/composables/useCollections'
 import { useKeyboardNavigation } from '@/composables/useKeyboardNavigation'
 import { useFocusTrap } from '@/composables/useFocusTrap'
+import { useBookmarks } from '@/composables/useBookmarks'
+import { useProjects } from '@/composables/useProjects'
+import { useToast } from '@/composables/useToast'
+import { buildDeepLink } from '@/lib/deepLinks'
+import { getDocument } from '@/lib/api'
 import SearchResultItem from '@/components/search/SearchResult.vue'
 import SearchEmpty from '@/components/search/SearchEmpty.vue'
 
 const router = useRouter()
+const route = useRoute()
 const { isOpen, close } = useCommandPalette()
 const { query, results, loading, error, collectionFilter, clearSearch } = useSearch()
 const { collections } = useCollections()
+const { activeProjectId } = useProjects()
+const { ensureLoaded, toggleBookmark } = useBookmarks()
+const { addToast } = useToast()
 
 const showCollectionFilters = computed(() => collections.value.length > 1)
 
 const inputRef = ref<HTMLInputElement | null>(null)
 const paletteRef = ref<HTMLElement | null>(null)
 const resultCount = computed(() => results.value.length)
+const canRunDocActions = computed(() => route.name === 'doc')
 
 useFocusTrap(paletteRef, isOpen)
 
@@ -55,6 +65,54 @@ function onInputKeydown(e: KeyboardEvent) {
 
 function onResultClick(index: number) {
   navigateToResult(index)
+}
+
+async function bookmarkCurrentDocument() {
+  try {
+    if (!canRunDocActions.value || !activeProjectId.value) return
+    const collection = route.params.collection as string
+    const slug = Array.isArray(route.params.slug) ? route.params.slug.join('/') : route.params.slug as string
+    if (!collection || !slug) return
+    const fullSlug = `${collection}/${slug}`
+
+    const doc = await getDocument(fullSlug)
+    await ensureLoaded(activeProjectId.value)
+    const state = await toggleBookmark(
+      activeProjectId.value,
+      collection,
+      fullSlug,
+      null,
+      doc.title,
+    )
+    addToast(state === 'added' ? 'Bookmark added' : 'Bookmark removed', 'success')
+    closeAndReset()
+  } catch (e) {
+    addToast(e instanceof Error ? e.message : 'Could not update bookmark', 'error')
+  }
+}
+
+async function copyCurrentLink() {
+  try {
+    if (!canRunDocActions.value || !activeProjectId.value) return
+    const collection = route.params.collection as string
+    const slug = Array.isArray(route.params.slug) ? route.params.slug.join('/') : route.params.slug as string
+    if (!collection || !slug) return
+    const link = buildDeepLink({
+      projectId: activeProjectId.value,
+      collectionId: collection,
+      docSlug: slug,
+    })
+    await navigator.clipboard.writeText(link)
+    addToast('Link copied to clipboard', 'success')
+    closeAndReset()
+  } catch (e) {
+    addToast(e instanceof Error ? e.message : 'Could not copy link', 'error')
+  }
+}
+
+function openBookmarks() {
+  router.push('/bookmarks').catch(() => {})
+  closeAndReset()
 }
 
 watch(isOpen, async (open) => {
@@ -131,6 +189,29 @@ watch(isOpen, async (open) => {
             <div class="border-t border-border" />
 
             <!-- Collection filters -->
+            <div class="flex items-center gap-1.5 px-4 py-2 border-b border-border">
+              <button
+                v-if="canRunDocActions"
+                class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-secondary text-text-secondary hover:text-text-primary transition-colors"
+                @click="bookmarkCurrentDocument"
+              >
+                Bookmark page
+              </button>
+              <button
+                v-if="canRunDocActions"
+                class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-secondary text-text-secondary hover:text-text-primary transition-colors"
+                @click="copyCurrentLink"
+              >
+                Copy link
+              </button>
+              <button
+                class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-secondary text-text-secondary hover:text-text-primary transition-colors"
+                @click="openBookmarks"
+              >
+                Open bookmarks
+              </button>
+            </div>
+
             <div v-if="showCollectionFilters" class="flex items-center gap-1.5 px-4 py-2 border-b border-border">
               <button
                 class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"

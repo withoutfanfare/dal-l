@@ -11,9 +11,7 @@ pub fn load_settings(app: &AppHandle) -> Result<Settings, String> {
     let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
 
     match store.get(SETTINGS_KEY) {
-        Some(value) => {
-            serde_json::from_value::<Settings>(value.clone()).map_err(|e| e.to_string())
-        }
+        Some(value) => serde_json::from_value::<Settings>(value.clone()).map_err(|e| e.to_string()),
         None => Ok(Settings::default()),
     }
 }
@@ -32,9 +30,11 @@ pub fn mask_settings(settings: &Settings) -> Settings {
     Settings {
         openai_api_key: settings.openai_api_key.as_ref().map(|k| mask_key(k)),
         anthropic_api_key: settings.anthropic_api_key.as_ref().map(|k| mask_key(k)),
+        gemini_api_key: settings.gemini_api_key.as_ref().map(|k| mask_key(k)),
         ollama_base_url: settings.ollama_base_url.clone(),
         preferred_provider: settings.preferred_provider.clone(),
         anthropic_model: settings.anthropic_model.clone(),
+        gemini_model: settings.gemini_model.clone(),
     }
 }
 
@@ -66,6 +66,13 @@ fn mask_key(key: &str) -> String {
         return "*".repeat(char_count);
     }
     let prefix: String = key.chars().take(4).collect();
-    let suffix: String = key.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    let suffix: String = key
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("{}...{}", prefix, suffix)
 }

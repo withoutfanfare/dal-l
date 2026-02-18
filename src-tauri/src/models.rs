@@ -77,12 +77,103 @@ pub struct AppPreferences {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Bookmark {
+    pub id: i64,
+    pub project_id: String,
+    pub collection_id: String,
+    pub doc_slug: String,
+    pub anchor_id: Option<String>,
+    pub title_snapshot: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_opened_at: Option<i64>,
+    pub order_index: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BookmarkFolder {
+    pub id: i64,
+    pub project_id: String,
+    pub name: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BookmarkTagEntity {
+    pub id: i64,
+    pub project_id: String,
+    pub name: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BookmarkRelations {
+    pub bookmark_id: i64,
+    pub folder_ids: Vec<i64>,
+    pub tag_ids: Vec<i64>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DocActivityItem {
+    pub doc_slug: String,
+    pub collection_id: String,
+    pub title: String,
+    pub section: String,
+    pub last_modified: Option<String>,
+    pub last_viewed_at: Option<i64>,
+    pub updated_since_viewed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DocNote {
+    pub project_id: String,
+    pub doc_slug: String,
+    pub note: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DocHighlight {
+    pub id: i64,
+    pub project_id: String,
+    pub doc_slug: String,
+    pub anchor_id: Option<String>,
+    pub selected_text: String,
+    pub context_text: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectChangeFeedItem {
+    pub id: i64,
+    pub project_id: String,
+    pub commit_hash: String,
+    pub author: String,
+    pub committed_at: String,
+    pub changed_files: Vec<String>,
+    pub changed_doc_slugs: Vec<String>,
+    pub recorded_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub openai_api_key: Option<String>,
     pub anthropic_api_key: Option<String>,
+    pub gemini_api_key: Option<String>,
     pub ollama_base_url: Option<String>,
     pub preferred_provider: Option<String>,
     pub anthropic_model: Option<String>,
+    pub gemini_model: Option<String>,
 }
 
 impl Default for Settings {
@@ -90,16 +181,24 @@ impl Default for Settings {
         Self {
             openai_api_key: None,
             anthropic_api_key: None,
+            gemini_api_key: None,
             ollama_base_url: Some("http://localhost:11434".to_string()),
             preferred_provider: None,
             anthropic_model: None,
+            gemini_model: None,
         }
     }
 }
 
 impl Settings {
     pub fn anthropic_model(&self) -> &str {
-        self.anthropic_model.as_deref().unwrap_or("claude-sonnet-4-20250514")
+        self.anthropic_model
+            .as_deref()
+            .unwrap_or("claude-sonnet-4-20250514")
+    }
+
+    pub fn gemini_model(&self) -> &str {
+        self.gemini_model.as_deref().unwrap_or("gemini-2.5-flash")
     }
 }
 
@@ -108,6 +207,6 @@ impl Settings {
 pub enum AiProvider {
     Openai,
     Anthropic,
+    Gemini,
     Ollama,
 }
-

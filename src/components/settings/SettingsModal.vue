@@ -20,9 +20,11 @@ const { settings, saving, loadSettings, saveSettings, testConnection } = useSett
 const draft = ref<Settings>({
   openai_api_key: null,
   anthropic_api_key: null,
+  gemini_api_key: null,
   ollama_base_url: null,
   preferred_provider: null,
   anthropic_model: null,
+  gemini_model: null,
 })
 
 const modalRef = ref<HTMLElement | null>(null)
@@ -32,13 +34,15 @@ useFocusTrap(modalRef, toRef(props, 'open'))
 
 const openaiRef = ref<InstanceType<typeof ProviderConfig> | null>(null)
 const anthropicRef = ref<InstanceType<typeof ProviderConfig> | null>(null)
+const geminiRef = ref<InstanceType<typeof ProviderConfig> | null>(null)
 const ollamaRef = ref<InstanceType<typeof ProviderConfig> | null>(null)
 
 const hasValidationErrors = computed(() => {
   const openaiValid = openaiRef.value?.isValid ?? true
   const anthropicValid = anthropicRef.value?.isValid ?? true
+  const geminiValid = geminiRef.value?.isValid ?? true
   const ollamaValid = ollamaRef.value?.isValid ?? true
-  return !openaiValid || !anthropicValid || !ollamaValid
+  return !openaiValid || !anthropicValid || !geminiValid || !ollamaValid
 })
 
 // Sync draft when settings load or modal opens
@@ -73,6 +77,7 @@ async function handleTestProvider(provider: AiProvider) {
   const refMap: Record<AiProvider, typeof openaiRef> = {
     openai: openaiRef,
     anthropic: anthropicRef,
+    gemini: geminiRef,
     ollama: ollamaRef,
   }
 
@@ -176,6 +181,19 @@ onUnmounted(() => {
             @test="handleTestProvider('anthropic')"
           />
 
+          <!-- Gemini -->
+          <ProviderConfig
+            ref="geminiRef"
+            provider="gemini"
+            label="Gemini"
+            :value="draft.gemini_api_key ?? ''"
+            placeholder="AIza..."
+            note="Uses Gemini for chat and embeddings."
+            help-url="https://aistudio.google.com/app/apikey"
+            @update:value="draft.gemini_api_key = $event || null"
+            @test="handleTestProvider('gemini')"
+          />
+
           <!-- Ollama -->
           <ProviderConfig
             ref="ollamaRef"
@@ -200,11 +218,36 @@ onUnmounted(() => {
               <option value="">Auto-detect</option>
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic</option>
+              <option value="gemini">Gemini</option>
               <option value="ollama">Ollama</option>
             </select>
             <p class="text-xs text-text-secondary">
               When set to auto-detect, the first configured provider will be used.
             </p>
+          </div>
+
+          <!-- Optional model overrides -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="space-y-1.5">
+              <label class="block text-xs font-medium uppercase tracking-wide text-text-secondary">Anthropic model</label>
+              <input
+                :value="draft.anthropic_model ?? ''"
+                type="text"
+                placeholder="claude-sonnet-4-20250514"
+                class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                @input="draft.anthropic_model = (($event.target as HTMLInputElement).value || null)"
+              >
+            </div>
+            <div class="space-y-1.5">
+              <label class="block text-xs font-medium uppercase tracking-wide text-text-secondary">Gemini model</label>
+              <input
+                :value="draft.gemini_model ?? ''"
+                type="text"
+                placeholder="gemini-2.5-flash"
+                class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                @input="draft.gemini_model = (($event.target as HTMLInputElement).value || null)"
+              >
+            </div>
           </div>
         </div>
 

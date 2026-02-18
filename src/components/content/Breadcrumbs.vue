@@ -17,15 +17,17 @@ const segments = computed(() => {
   if (activeCollection.value) {
     crumbs.push({
       label: activeCollection.value.name,
-      to: '/',
+      to: `/${props.document.collection_id}`,
     })
   }
 
   if (props.document.section) {
     const sectionSlug = findSectionSlug(props.document.section)
+    const fallbackParent = props.document.parent_slug?.trim()
+    const targetSlug = sectionSlug ?? (fallbackParent && fallbackParent !== props.document.slug ? fallbackParent : null)
     crumbs.push({
       label: props.document.section,
-      to: sectionSlug ? `/${props.document.collection_id}/${sectionSlug}` : null,
+      to: targetSlug ? `/${props.document.collection_id}/${targetSlug}` : `/${props.document.collection_id}`,
     })
   }
 

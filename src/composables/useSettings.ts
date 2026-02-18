@@ -5,9 +5,11 @@ import type { Settings, AiProvider } from '@/lib/types'
 const settings = ref<Settings>({
   openai_api_key: null,
   anthropic_api_key: null,
+  gemini_api_key: null,
   ollama_base_url: null,
   preferred_provider: null,
   anthropic_model: null,
+  gemini_model: null,
 })
 
 const loaded = ref(false)
@@ -15,7 +17,7 @@ const saving = ref(false)
 
 const isConfigured = computed(() => {
   const s = settings.value
-  return !!(s.openai_api_key || s.anthropic_api_key || s.ollama_base_url)
+  return !!(s.openai_api_key || s.anthropic_api_key || s.gemini_api_key || s.ollama_base_url)
 })
 
 export function useSettings() {

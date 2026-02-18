@@ -20,7 +20,7 @@ const shortcutGroups = [
       { keys: ['Cmd', 'K'], description: 'Open search' },
       { keys: ['Cmd', '\\'], description: 'Toggle sidebar' },
       { keys: ['Cmd', 'Shift', 'L'], description: 'Toggle dark mode' },
-      // HIDDEN: AI — { keys: ['Cmd', 'Shift', 'A'], description: 'Toggle AI panel' },
+      { keys: ['Cmd', 'Shift', 'A'], description: 'Toggle AI panel' },
       { keys: ['Cmd', '?'], description: 'Keyboard shortcuts' },
     ],
   },
@@ -32,6 +32,16 @@ const shortcutGroups = [
     ],
   },
   {
+    label: 'Document',
+    shortcuts: [
+      { keys: ['B'], description: 'Bookmark current page' },
+      { keys: ['S'], description: 'Copy page link' },
+      { keys: ['C'], description: 'Toggle compare mode' },
+      { keys: ['N'], description: 'Focus notes sidebar' },
+      { keys: ['/'], description: 'Focus search' },
+    ],
+  },
+  {
     label: 'Search',
     shortcuts: [
       { keys: ['Esc'], description: 'Close search' },
@@ -39,13 +49,12 @@ const shortcutGroups = [
       { keys: ['Enter'], description: 'Open selected result' },
     ],
   },
-  // HIDDEN: AI
-  // {
-  //   label: 'AI',
-  //   shortcuts: [
-  //     { keys: ['Esc'], description: 'Close AI panel' },
-  //   ],
-  // },
+  {
+    label: 'AI',
+    shortcuts: [
+      { keys: ['Esc'], description: 'Close AI panel' },
+    ],
+  },
 ]
 
 let unregister: (() => void) | null = null

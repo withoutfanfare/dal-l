@@ -19,6 +19,11 @@ const router = createRouter({
       component: () => import('@/pages/ProjectsPage.vue'),
     },
     {
+      path: '/bookmarks/:collection?',
+      name: 'bookmarks',
+      component: () => import('@/pages/BookmarksPage.vue'),
+    },
+    {
       path: '/:collection/:slug(.*)',
       name: 'doc',
       component: () => import('@/pages/DocPage.vue'),

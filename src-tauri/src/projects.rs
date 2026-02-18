@@ -86,6 +86,13 @@ impl ProjectManager {
             })
     }
 
+    /// Get a reference to a specific project's connection.
+    pub fn connection(&self, project_id: &str) -> Result<&Connection, String> {
+        self.connections
+            .get(project_id)
+            .ok_or_else(|| format!("No database connection for project '{}'", project_id))
+    }
+
     /// Get the active project metadata
     pub fn active_project(&self) -> Option<&Project> {
         self.registry
@@ -95,12 +102,21 @@ impl ProjectManager {
     }
 
     /// Open a database connection for a project
-    pub fn open_connection(&mut self, project_id: &str, db_path: &std::path::Path) -> Result<(), String> {
+    pub fn open_connection(
+        &mut self,
+        project_id: &str,
+        db_path: &std::path::Path,
+    ) -> Result<(), String> {
         let conn = Connection::open_with_flags(
             db_path,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
-        .map_err(|e| format!("Failed to open database for project '{}': {}", project_id, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to open database for project '{}': {}",
+                project_id, e
+            )
+        })?;
 
         self.connections.insert(project_id.to_string(), conn);
         Ok(())
@@ -117,7 +133,10 @@ impl ProjectManager {
             return Err(format!("Project '{}' not found in registry", project_id));
         }
         if !self.connections.contains_key(project_id) {
-            return Err(format!("No database connection for project '{}'", project_id));
+            return Err(format!(
+                "No database connection for project '{}'",
+                project_id
+            ));
         }
         self.registry.active_project_id = project_id.to_string();
         Ok(())

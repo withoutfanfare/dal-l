@@ -293,6 +293,9 @@ mark {
 }
 
 .prose .heading-anchor {
+  border: none;
+  background: transparent;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   margin-left: 0.35em;
@@ -331,6 +334,13 @@ mark {
   color: #16a34a;
   white-space: nowrap;
   animation: fade-in-out 1.5s ease forwards;
+}
+
+.prose .heading-compare-changed {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-radius: 6px;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
 }
 
 @keyframes fade-in-out {

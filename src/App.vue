@@ -1,36 +1,51 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AppLayout from '@/layouts/AppLayout.vue'
 import CommandPalette from '@/components/search/CommandPalette.vue'
-// HIDDEN: AI — import AskPanel from '@/components/ai/AskPanel.vue'
-// HIDDEN: AI — import SettingsModal from '@/components/settings/SettingsModal.vue'
+import AskPanel from '@/components/ai/AskPanel.vue'
+import SettingsModal from '@/components/settings/SettingsModal.vue'
 import UpdateNotification from '@/components/UpdateNotification.vue'
 import Toast from '@/components/ui/Toast.vue'
 import ShortcutHelp from '@/components/help/ShortcutHelp.vue'
-// HIDDEN: AI — import { useSettings } from '@/composables/useSettings'
+import { useSettings } from '@/composables/useSettings'
 import { useUpdater } from '@/composables/useUpdater'
+import { isFeatureEnabled } from '@/lib/featureFlags'
+import { useToast } from '@/composables/useToast'
 
-// HIDDEN: AI — const settingsOpen = ref(false)
-// HIDDEN: AI — const { loadSettings } = useSettings()
+const settingsOpen = ref(false)
+const showAiPanel = isFeatureEnabled('aiPanel')
+const { loadSettings } = useSettings()
 const { checkForUpdate } = useUpdater()
+const { addToast } = useToast()
 
-// HIDDEN: AI
-// function openSettings() {
-//   settingsOpen.value = true
-// }
+function openSettings() {
+  settingsOpen.value = true
+}
+
+function handleDeepLinkStatus(event: Event) {
+  const customEvent = event as CustomEvent<{ message?: string }>
+  const message = customEvent.detail?.message
+  if (message) addToast(message, 'info')
+}
 
 onMounted(() => {
-  // HIDDEN: AI — loadSettings()
+  if (showAiPanel) {
+    loadSettings()
+  }
   checkForUpdate()
+  window.addEventListener('dalil:deeplink-status', handleDeepLinkStatus)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('dalil:deeplink-status', handleDeepLinkStatus)
 })
 </script>
 
 <template>
-  <AppLayout />
+  <AppLayout @open-settings="openSettings" />
   <CommandPalette />
-  <!-- HIDDEN: AI -->
-  <!-- <AskPanel /> -->
-  <!-- <SettingsModal :open="settingsOpen" @close="settingsOpen = false" /> -->
+  <AskPanel v-if="showAiPanel" />
+  <SettingsModal v-if="showAiPanel" :open="settingsOpen" @close="settingsOpen = false" />
   <UpdateNotification />
   <ShortcutHelp />
   <Toast />
