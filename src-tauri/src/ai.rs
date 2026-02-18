@@ -3,13 +3,9 @@ use crate::projects::ProjectManager;
 use rusqlite::params;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
-
-/// Cached result of whether the chunks_fts table exists. The DB is read-only
-/// so the schema never changes at runtime — safe to check once and reuse.
-static HAS_CHUNKS_FTS: OnceLock<bool> = OnceLock::new();
 
 /// Cached Ollama availability status with a 30-second TTL.
 static OLLAMA_AVAILABLE_CACHE: Mutex<Option<(bool, Instant)>> = Mutex::new(None);
@@ -131,6 +127,16 @@ fn is_cancelled(request_id: &str) -> bool {
         .ok()
         .and_then(|guard| guard.as_ref().map(|set| set.contains(request_id)))
         .unwrap_or(false)
+}
+
+fn table_exists(db: &rusqlite::Connection, table_name: &str) -> bool {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        params![table_name],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|exists| exists == 1)
+    .unwrap_or(false)
 }
 
 // -- FTS5 query sanitisation --
@@ -362,9 +368,9 @@ async fn is_ollama_available(client: &reqwest::Client, settings: &Settings) -> b
 // -- Vector similarity search --
 
 /// Compute cosine similarity between two float32 vectors.
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+fn cosine_similarity(a: &[f32], b: &[f32]) -> Option<f64> {
     if a.len() != b.len() || a.is_empty() {
-        return 0.0;
+        return None;
     }
 
     let mut dot = 0.0f64;
@@ -381,9 +387,9 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 
     let denom = mag_a.sqrt() * mag_b.sqrt();
     if denom == 0.0 {
-        0.0
+        None
     } else {
-        dot / denom
+        Some(dot / denom)
     }
 }
 
@@ -400,6 +406,13 @@ pub fn vector_search(
     query_embedding: &[f32],
     limit: usize,
 ) -> Result<Vec<ScoredChunk>, String> {
+    if limit == 0 || query_embedding.is_empty() {
+        return Ok(vec![]);
+    }
+    if !table_exists(db, "chunk_embeddings") {
+        return Ok(vec![]);
+    }
+
     let mut stmt = db
         .prepare_cached(
             "SELECT ce.chunk_id, ce.embedding, c.document_id, c.chunk_index, c.content_text, c.heading_context \
@@ -431,18 +444,23 @@ pub fn vector_search(
 
     let mut scored: Vec<ScoredChunk> = rows
         .into_iter()
-        .map(
+        .filter_map(
             |(chunk_id, blob, document_id, chunk_index, content_text, heading_context)| {
                 let stored = decode_embedding_blob(&blob);
-                let score = cosine_similarity(query_embedding, &stored);
-                ScoredChunk {
+                let score = cosine_similarity(query_embedding, &stored)?;
+                // Skip zero/negative scores to avoid noisy ordering and
+                // dimension-mismatch artefacts dominating hybrid retrieval.
+                if score <= 0.0 || !score.is_finite() {
+                    return None;
+                }
+                Some(ScoredChunk {
                     id: chunk_id,
                     document_id,
                     chunk_index,
                     content_text,
                     heading_context,
                     score,
-                }
+                })
             },
         )
         .collect();
@@ -466,7 +484,7 @@ fn extract_keywords(query: &str) -> Vec<String> {
         "you", "your",
     ];
 
-    query
+    let cleaned_terms = query
         .split_whitespace()
         .map(|w| w.to_lowercase())
         .map(|w| {
@@ -474,8 +492,22 @@ fn extract_keywords(query: &str) -> Vec<String> {
                 .filter(|c| c.is_alphanumeric())
                 .collect::<String>()
         })
-        .filter(|w| w.len() >= 2 && !STOP_WORDS.contains(&w.as_str()))
-        .collect()
+        .filter(|w| w.len() >= 2)
+        .collect::<Vec<_>>();
+
+    let keywords = cleaned_terms
+        .iter()
+        .filter(|w| !STOP_WORDS.contains(&w.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // For stopword-heavy prompts ("what is this about", etc.), keep a small
+    // fallback token set rather than returning no matches.
+    if keywords.is_empty() {
+        cleaned_terms.into_iter().take(6).collect()
+    } else {
+        keywords
+    }
 }
 
 /// Perform FTS5 search for chunks whose content matches the query text.
@@ -490,15 +522,7 @@ pub fn fts_chunk_search(
         return Ok(vec![]);
     }
 
-    let has_fts = *HAS_CHUNKS_FTS.get_or_init(|| {
-        db.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chunks_fts'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .unwrap_or(0)
-            > 0
-    });
+    let has_fts = table_exists(db, "chunks_fts");
 
     if has_fts {
         // Wrap each keyword in double quotes for safe FTS5 matching
@@ -584,26 +608,40 @@ pub fn hybrid_search(
     query_text: &str,
     limit: usize,
 ) -> Result<Vec<ScoredChunk>, String> {
-    let vector_results = vector_search(db, query_embedding, 10)?;
-    let fts_results = fts_chunk_search(db, query_text, 5)?;
+    if limit == 0 {
+        return Ok(vec![]);
+    }
 
-    let mut seen_ids = HashSet::new();
-    let mut combined = Vec::new();
+    let vector_results = vector_search(db, query_embedding, 20).unwrap_or_else(|e| {
+        eprintln!(
+            "Warning: vector search failed, falling back to text search only: {}",
+            e
+        );
+        vec![]
+    });
+    let fts_results = fts_chunk_search(db, query_text, 20)?;
 
-    // Vector results first (higher priority)
+    // Merge by chunk id and boost text matches, so exact keyword hits are not
+    // drowned out by weak vector scores.
+    let mut merged: HashMap<i32, ScoredChunk> = HashMap::new();
     for chunk in vector_results {
-        if seen_ids.insert(chunk.id) {
-            combined.push(chunk);
+        merged.insert(chunk.id, chunk);
+    }
+    for mut chunk in fts_results {
+        if let Some(existing) = merged.get_mut(&chunk.id) {
+            existing.score += 0.35;
+        } else {
+            chunk.score = chunk.score.max(0.35);
+            merged.insert(chunk.id, chunk);
         }
     }
 
-    // Then FTS results
-    for chunk in fts_results {
-        if seen_ids.insert(chunk.id) {
-            combined.push(chunk);
-        }
-    }
-
+    let mut combined = merged.into_values().collect::<Vec<_>>();
+    combined.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     combined.truncate(limit);
     Ok(combined)
 }
@@ -1337,4 +1375,75 @@ pub async fn ask_question_rag(
         clear_cancel_request(&request_id);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hybrid_search, vector_search};
+    use rusqlite::Connection;
+
+    fn encode_f32_blob(values: &[f32]) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(values.len() * 4);
+        for value in values {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn vector_search_returns_empty_if_embeddings_table_missing() {
+        let db = Connection::open_in_memory().expect("open in-memory sqlite");
+        db.execute_batch(
+            "CREATE TABLE chunks (
+                id INTEGER PRIMARY KEY,
+                document_id INTEGER NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                content_text TEXT NOT NULL,
+                heading_context TEXT NOT NULL DEFAULT ''
+            );",
+        )
+        .expect("create chunks table");
+
+        let results = vector_search(&db, &[0.2_f32, 0.8_f32], 8).expect("vector search succeeds");
+        assert!(results.is_empty(), "missing table should not hard-fail");
+    }
+
+    #[test]
+    fn hybrid_search_falls_back_to_text_when_vector_scores_invalid() {
+        let db = Connection::open_in_memory().expect("open in-memory sqlite");
+        db.execute_batch(
+            "CREATE TABLE chunks (
+                id INTEGER PRIMARY KEY,
+                document_id INTEGER NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                content_text TEXT NOT NULL,
+                heading_context TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE chunk_embeddings (
+                chunk_id INTEGER PRIMARY KEY,
+                embedding BLOB
+            );",
+        )
+        .expect("create base tables");
+
+        db.execute(
+            "INSERT INTO chunks (id, document_id, chunk_index, content_text, heading_context)
+             VALUES (1, 1, 0, 'deployment runbook checklist', 'ops')",
+            [],
+        )
+        .expect("insert chunk");
+
+        // Deliberately mismatched dimensionality (1D vs 2D query embedding).
+        db.execute(
+            "INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?1, ?2)",
+            rusqlite::params![1_i32, encode_f32_blob(&[0.42_f32])],
+        )
+        .expect("insert embedding");
+
+        let results = hybrid_search(&db, &[0.1_f32, 0.2_f32], "deployment checklist", 5)
+            .expect("hybrid search succeeds");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, 1);
+    }
 }

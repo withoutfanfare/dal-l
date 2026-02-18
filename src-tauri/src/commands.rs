@@ -121,7 +121,8 @@ fn project_change_feed_from_row(
 ) -> rusqlite::Result<ProjectChangeFeedItem> {
     let changed_files_json: String = row.get(5)?;
     let changed_doc_slugs_json: String = row.get(6)?;
-    let changed_files = serde_json::from_str::<Vec<String>>(&changed_files_json).unwrap_or_default();
+    let changed_files =
+        serde_json::from_str::<Vec<String>>(&changed_files_json).unwrap_or_default();
     let changed_doc_slugs =
         serde_json::from_str::<Vec<String>>(&changed_doc_slugs_json).unwrap_or_default();
     Ok(ProjectChangeFeedItem {
@@ -1152,7 +1153,9 @@ fn capture_git_change_feed_entry(
     if !show_toplevel.status.success() {
         return None;
     }
-    let repo_root = String::from_utf8_lossy(&show_toplevel.stdout).trim().to_string();
+    let repo_root = String::from_utf8_lossy(&show_toplevel.stdout)
+        .trim()
+        .to_string();
     if repo_root.is_empty() {
         return None;
     }
@@ -1164,10 +1167,19 @@ fn capture_git_change_feed_entry(
     if !prefix_out.status.success() {
         return None;
     }
-    let source_prefix = String::from_utf8_lossy(&prefix_out.stdout).trim().trim_end_matches('/').to_string();
+    let source_prefix = String::from_utf8_lossy(&prefix_out.stdout)
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
 
     let meta_out = std::process::Command::new("git")
-        .args(["-C", source_path, "log", "-1", "--pretty=format:%H%n%an%n%aI"])
+        .args([
+            "-C",
+            source_path,
+            "log",
+            "-1",
+            "--pretty=format:%H%n%an%n%aI",
+        ])
         .output()
         .ok()?;
     if !meta_out.status.success() {
@@ -1184,7 +1196,14 @@ fn capture_git_change_feed_entry(
     }
 
     let files_out = std::process::Command::new("git")
-        .args(["-C", source_path, "show", "--name-only", "--pretty=format:", &commit_hash])
+        .args([
+            "-C",
+            source_path,
+            "show",
+            "--name-only",
+            "--pretty=format:",
+            &commit_hash,
+        ])
         .output()
         .ok()?;
     if !files_out.status.success() {
@@ -1197,13 +1216,20 @@ fn capture_git_change_feed_entry(
         .map(|line| line.to_string())
         .collect();
 
-    let changed_doc_slugs = map_changed_paths_to_doc_slugs(project_conn, &source_prefix, &changed_files).ok()?;
+    let changed_doc_slugs =
+        map_changed_paths_to_doc_slugs(project_conn, &source_prefix, &changed_files).ok()?;
 
     if repo_root.is_empty() {
         return None;
     }
 
-    Some((commit_hash, author, committed_at, changed_files, changed_doc_slugs))
+    Some((
+        commit_hash,
+        author,
+        committed_at,
+        changed_files,
+        changed_doc_slugs,
+    ))
 }
 
 fn record_project_change_feed(
@@ -1231,7 +1257,8 @@ fn record_project_change_feed(
     }
 
     let changed_files_json = serde_json::to_string(&changed_files).map_err(|e| e.to_string())?;
-    let changed_doc_slugs_json = serde_json::to_string(&changed_doc_slugs).map_err(|e| e.to_string())?;
+    let changed_doc_slugs_json =
+        serde_json::to_string(&changed_doc_slugs).map_err(|e| e.to_string())?;
     let now = unix_timestamp_i64();
 
     user_state_conn
@@ -1580,6 +1607,68 @@ pub async fn test_provider(
     ai::test_provider_connection(&http_client.0, &stored, &provider).await
 }
 
+fn has_non_empty(value: &Option<String>) -> bool {
+    value
+        .as_ref()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn provider_is_configured(settings: &Settings, provider: &AiProvider) -> bool {
+    match provider {
+        AiProvider::Openai => has_non_empty(&settings.openai_api_key),
+        AiProvider::Anthropic => has_non_empty(&settings.anthropic_api_key),
+        AiProvider::Gemini => has_non_empty(&settings.gemini_api_key),
+        AiProvider::Ollama => has_non_empty(&settings.ollama_base_url),
+    }
+}
+
+fn resolve_provider(
+    settings: &Settings,
+    provider: Option<AiProvider>,
+) -> Result<AiProvider, String> {
+    if let Some(explicit) = provider {
+        if provider_is_configured(settings, &explicit) {
+            return Ok(explicit);
+        }
+        return Err(match explicit {
+            AiProvider::Openai => {
+                "OpenAI is selected but no OpenAI API key is configured.".to_string()
+            }
+            AiProvider::Anthropic => {
+                "Anthropic is selected but no Anthropic API key is configured.".to_string()
+            }
+            AiProvider::Gemini => {
+                "Gemini is selected but no Gemini API key is configured.".to_string()
+            }
+            AiProvider::Ollama => {
+                "Ollama is selected but no Ollama base URL is configured.".to_string()
+            }
+        });
+    }
+
+    if let Some(preferred) = settings.preferred_provider.as_ref().and_then(|p| {
+        serde_json::from_value::<AiProvider>(serde_json::Value::String(p.clone())).ok()
+    }) {
+        if provider_is_configured(settings, &preferred) {
+            return Ok(preferred);
+        }
+    }
+
+    for candidate in [
+        AiProvider::Openai,
+        AiProvider::Anthropic,
+        AiProvider::Gemini,
+        AiProvider::Ollama,
+    ] {
+        if provider_is_configured(settings, &candidate) {
+            return Ok(candidate);
+        }
+    }
+
+    Err("No AI provider is configured. Add an OpenAI, Anthropic, or Gemini API key, or configure an Ollama base URL in Settings.".to_string())
+}
+
 #[tauri::command]
 pub async fn ask_question(
     app: AppHandle,
@@ -1590,31 +1679,7 @@ pub async fn ask_question(
 ) -> Result<(), String> {
     let stored = settings::load_settings(&app)?;
 
-    // Determine the provider to use
-    let provider = provider
-        .or_else(|| {
-            stored.preferred_provider.as_ref().and_then(|p| {
-                match serde_json::from_value::<AiProvider>(serde_json::Value::String(p.clone())) {
-                    Ok(provider) => Some(provider),
-                    Err(e) => {
-                        eprintln!("Warning: invalid preferred_provider value '{}': {}", p, e);
-                        None
-                    }
-                }
-            })
-        })
-        .unwrap_or_else(|| {
-            // Auto-detect: prefer OpenAI, then Anthropic, then Gemini, then Ollama
-            if stored.openai_api_key.is_some() {
-                AiProvider::Openai
-            } else if stored.anthropic_api_key.is_some() {
-                AiProvider::Anthropic
-            } else if stored.gemini_api_key.is_some() {
-                AiProvider::Gemini
-            } else {
-                AiProvider::Ollama
-            }
-        });
+    let provider = resolve_provider(&stored, provider)?;
 
     // Run the RAG pipeline — errors are emitted as events
     if let Err(e) = ai::ask_question_rag(
@@ -1648,16 +1713,7 @@ pub async fn get_embedding(
     provider: Option<AiProvider>,
 ) -> Result<Vec<f32>, String> {
     let stored = settings::load_settings(&app)?;
-
-    let provider = provider.unwrap_or_else(|| {
-        if stored.openai_api_key.is_some() {
-            AiProvider::Openai
-        } else if stored.gemini_api_key.is_some() {
-            AiProvider::Gemini
-        } else {
-            AiProvider::Ollama
-        }
-    });
+    let provider = resolve_provider(&stored, provider)?;
 
     ai::generate_embedding(&http_client.0, &stored, &provider, &text).await
 }
@@ -1704,6 +1760,8 @@ pub async fn add_project(
     icon: String,
     source_path: String,
 ) -> Result<crate::projects::Project, String> {
+    let stored_settings = settings::load_settings(&app).unwrap_or_default();
+
     // Generate a slug ID from the name
     let id = name
         .to_lowercase()
@@ -1736,23 +1794,30 @@ pub async fn add_project(
     let script_path = project_root.join("scripts/build-handbook.ts");
 
     // Spawn the build script using npx tsx
-    let output = app
-        .shell()
-        .command("npx")
-        .args([
-            "tsx",
-            script_path.to_str().ok_or("Invalid script path")?,
-            "--source",
-            &source_path,
-            "--output",
-            db_path.to_str().ok_or("Invalid DB path")?,
-            "--collection-id",
-            &id,
-            "--collection-name",
-            &name,
-            "--collection-icon",
-            &icon,
-        ])
+    let mut build_command = app.shell().command("npx").args([
+        "tsx",
+        script_path.to_str().ok_or("Invalid script path")?,
+        "--source",
+        &source_path,
+        "--output",
+        db_path.to_str().ok_or("Invalid DB path")?,
+        "--collection-id",
+        &id,
+        "--collection-name",
+        &name,
+        "--collection-icon",
+        &icon,
+    ]);
+
+    if let Some(api_key) = stored_settings
+        .openai_api_key
+        .as_ref()
+        .filter(|k| !k.trim().is_empty())
+    {
+        build_command = build_command.env("OPENAI_API_KEY", api_key);
+    }
+
+    let output = build_command
         .output()
         .await
         .map_err(|e| format!("Failed to spawn build process: {}", e))?;
@@ -1804,6 +1869,8 @@ pub async fn rebuild_project(
     user_state: State<'_, UserStateDb>,
     project_id: String,
 ) -> Result<(), String> {
+    let stored_settings = settings::load_settings(&app).unwrap_or_default();
+
     // Get project details
     let (source_path, db_relative_path, name, icon) = {
         let mgr = manager.lock().map_err(|e| e.to_string())?;
@@ -1853,23 +1920,30 @@ pub async fn rebuild_project(
     };
     let script_path = project_root.join("scripts/build-handbook.ts");
 
-    let output = app
-        .shell()
-        .command("npx")
-        .args([
-            "tsx",
-            script_path.to_str().ok_or("Invalid script path")?,
-            "--source",
-            &source_path,
-            "--output",
-            db_path.to_str().ok_or("Invalid DB path")?,
-            "--collection-id",
-            &project_id,
-            "--collection-name",
-            &name,
-            "--collection-icon",
-            &icon,
-        ])
+    let mut build_command = app.shell().command("npx").args([
+        "tsx",
+        script_path.to_str().ok_or("Invalid script path")?,
+        "--source",
+        &source_path,
+        "--output",
+        db_path.to_str().ok_or("Invalid DB path")?,
+        "--collection-id",
+        &project_id,
+        "--collection-name",
+        &name,
+        "--collection-icon",
+        &icon,
+    ]);
+
+    if let Some(api_key) = stored_settings
+        .openai_api_key
+        .as_ref()
+        .filter(|k| !k.trim().is_empty())
+    {
+        build_command = build_command.env("OPENAI_API_KEY", api_key);
+    }
+
+    let output = build_command
         .output()
         .await
         .map_err(|e| format!("Failed to spawn build process: {}", e))?;

@@ -184,7 +184,7 @@ impl Default for Settings {
             openai_api_key: None,
             anthropic_api_key: None,
             gemini_api_key: None,
-            ollama_base_url: Some("http://localhost:11434".to_string()),
+            ollama_base_url: None,
             preferred_provider: None,
             anthropic_model: None,
             gemini_model: None,
