@@ -3,6 +3,8 @@ import { ref, watch, onBeforeUnmount } from 'vue'
 import type { AiProvider } from '@/lib/types'
 import { sanitiseHtml } from '@/lib/sanitise'
 import ProviderBadge from './ProviderBadge.vue'
+import { useRouter } from 'vue-router'
+import type { AiSourceReference } from '@/composables/useAI'
 
 const props = defineProps<{
   question: string
@@ -10,7 +12,10 @@ const props = defineProps<{
   loading: boolean
   error: string | null
   provider: AiProvider | null
+  sources: AiSourceReference[]
 }>()
+
+const router = useRouter()
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
@@ -77,6 +82,20 @@ onBeforeUnmount(() => {
     clearTimeout(debounceTimer)
   }
 })
+
+function openSource(source: AiSourceReference) {
+  const parts = source.docSlug.split('/').filter(Boolean)
+  const collection = parts[0]
+  const slug = parts.slice(1).join('/')
+  if (!collection || !slug) return
+  router.push({
+    name: 'doc',
+    params: {
+      collection,
+      slug,
+    },
+  }).catch(() => {})
+}
 </script>
 
 <template>
@@ -124,6 +143,26 @@ onBeforeUnmount(() => {
           data-selectable
           v-html="renderedHtml"
         />
+
+        <div v-if="sources.length > 0" class="mt-3 border-t border-border/70 pt-2">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1.5">
+            Sources
+          </p>
+          <div class="space-y-1">
+            <button
+              v-for="source in sources"
+              :key="`${source.documentId}:${source.chunkId}`"
+              class="w-full text-left rounded-md border border-border bg-surface-secondary/50 px-2 py-1.5 hover:bg-surface-secondary transition-colors"
+              @click="openSource(source)"
+            >
+              <p class="text-xs font-medium text-text-primary truncate">
+                {{ source.docTitle }}
+                <span v-if="source.headingContext" class="text-text-secondary font-normal">· {{ source.headingContext }}</span>
+              </p>
+              <p class="text-[11px] text-text-secondary mt-0.5 line-clamp-2">{{ source.excerpt }}</p>
+            </button>
+          </div>
+        </div>
 
         <!-- Streaming indicator -->
         <span

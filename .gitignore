@@ -7,8 +7,11 @@ dist/
 # Tauri
 src-tauri/target/
 
-# Database (build artifact)
+# Database (build artifact + SQLite WAL-mode journals)
 dalil.db
+*.db-shm
+*.db-wal
+*.db-journal
 
 # Environment
 .env

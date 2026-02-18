@@ -1,6 +1,15 @@
 import { ref, watch } from 'vue'
 import { searchDocuments } from '@/lib/api'
 import type { SearchResult } from '@/lib/types'
+import { useBookmarks } from './useBookmarks'
+import { useDocActivity } from './useDocActivity'
+import { useCollections } from './useCollections'
+import {
+  loadSearchUsage,
+  saveSearchUsage,
+  sortSearchResults,
+  updateSearchUsage,
+} from '@/lib/searchRanking'
 
 const query = ref('')
 const results = ref<SearchResult[]>([])
@@ -10,6 +19,10 @@ const collectionFilter = ref<string | undefined>(undefined)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let requestId = 0
+const { byDocSlug } = useBookmarks()
+const { recentDocuments, updatedSlugs } = useDocActivity()
+const { activeCollectionId } = useCollections()
+const usageBySlug = ref(loadSearchUsage())
 
 function formatQuery(raw: string): string {
   const trimmed = raw.trim()
@@ -34,6 +47,11 @@ function clearSearch() {
   }
 }
 
+function recordSelection(result: SearchResult) {
+  usageBySlug.value = updateSearchUsage(usageBySlug.value, result.slug)
+  saveSearchUsage(usageBySlug.value)
+}
+
 function performSearch() {
   if (debounceTimer) {
     clearTimeout(debounceTimer)
@@ -55,7 +73,22 @@ function performSearch() {
     try {
       const data = await searchDocuments(formatQuery(trimmed), collectionFilter.value, 20)
       if (thisRequest === requestId) {
-        results.value = data
+        const queryLower = trimmed.toLowerCase()
+        const bookmarkCountBySlug = new Map<string, number>()
+        for (const [slug, list] of byDocSlug.value.entries()) {
+          bookmarkCountBySlug.set(slug, list.length)
+        }
+        const recentIndexBySlug = new Map<string, number>()
+        recentDocuments.value.forEach((item, index) => {
+          recentIndexBySlug.set(item.docSlug, index)
+        })
+        results.value = sortSearchResults(data, queryLower, {
+          bookmarkCountBySlug,
+          recentIndexBySlug,
+          updatedSlugs: updatedSlugs.value,
+          activeCollectionId: activeCollectionId.value || undefined,
+          usageBySlug: usageBySlug.value,
+        })
         error.value = null
       }
     } catch (e) {
@@ -75,5 +108,5 @@ watch(query, () => performSearch())
 watch(collectionFilter, () => performSearch())
 
 export function useSearch() {
-  return { query, results, loading, error, collectionFilter, clearSearch }
+  return { query, results, loading, error, collectionFilter, clearSearch, recordSelection }
 }

@@ -6,7 +6,7 @@ import { useFocusTrap } from '@/composables/useFocusTrap'
 import AskInput from './AskInput.vue'
 import AskResponse from './AskResponse.vue'
 
-const { isOpen, conversations, loading, hasConversations, close, clearConversation, ask } = useAI()
+const { isOpen, conversations, loading, hasConversations, close, clearConversation, ask, cancelCurrent } = useAI()
 
 const inputRef = ref<InstanceType<typeof AskInput> | null>(null)
 const scrollRef = ref<HTMLElement | null>(null)
@@ -65,6 +65,10 @@ function handleClear() {
   })
 }
 
+function handleCancelRequest() {
+  cancelCurrent()
+}
+
 let unregister: (() => void) | null = null
 
 onMounted(() => {
@@ -110,6 +114,13 @@ onUnmounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <button
+            v-if="loading"
+            class="text-xs text-text-secondary hover:text-text-primary transition-colors"
+            @click="handleCancelRequest"
+          >
+            Cancel
+          </button>
+          <button
             v-if="hasConversations"
             class="text-xs text-text-secondary hover:text-text-primary transition-colors"
             @click="handleClear"
@@ -150,6 +161,7 @@ onUnmounted(() => {
             :loading="entry.loading"
             :error="entry.error"
             :provider="entry.provider"
+            :sources="entry.sources"
           />
         </div>
       </div>

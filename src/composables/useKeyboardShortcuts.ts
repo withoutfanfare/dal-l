@@ -2,10 +2,13 @@ import { onMounted, onUnmounted } from 'vue'
 import type { Router } from 'vue-router'
 import { useSidebar } from './useSidebar'
 import { useTheme } from './useTheme'
-// HIDDEN: AI — import { useAI } from './useAI'
+import { useAI } from './useAI'
 import { useCollections } from './useCollections'
 import { useNavigation, type NavigationTree } from './useNavigation'
+import { useCommandPalette } from './useCommandPalette'
+import { useSettings } from './useSettings'
 import { registerKeydownHandler } from './useKeydownDispatcher'
+import { isFeatureEnabled } from '@/lib/featureFlags'
 
 export interface KeyboardShortcut {
   key: string
@@ -30,9 +33,12 @@ function firstLeaf(nodes: NavigationTree[]): NavigationTree | null {
 export function useKeyboardShortcuts(router: Router) {
   const { toggleSidebar } = useSidebar()
   const { toggleTheme } = useTheme()
-  // HIDDEN: AI — const { toggle: toggleAI, isConfigured } = useAI()
+  const { toggle: toggleAI } = useAI()
+  const { isConfigured } = useSettings()
   const { collections, setActiveCollection } = useCollections()
   const { loadNavigation, tree } = useNavigation()
+  const { open: openSearch } = useCommandPalette()
+  const aiPanelEnabled = isFeatureEnabled('aiPanel')
 
   const shortcuts: KeyboardShortcut[] = [
     {
@@ -63,16 +69,15 @@ export function useKeyboardShortcuts(router: Router) {
       description: 'Navigate forward',
       handler: () => router.forward(),
     },
-    // HIDDEN: AI
-    // {
-    //   key: 'A',
-    //   meta: true,
-    //   shift: true,
-    //   description: 'Toggle Ask AI panel',
-    //   handler: () => {
-    //     if (isConfigured.value) toggleAI()
-    //   },
-    // },
+    {
+      key: 'A',
+      meta: true,
+      shift: true,
+      description: 'Toggle Ask AI panel',
+      handler: () => {
+        if (aiPanelEnabled && isConfigured.value) toggleAI()
+      },
+    },
   ]
 
   let unregister: (() => void) | null = null
@@ -83,6 +88,34 @@ export function useKeyboardShortcuts(router: Router) {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return
+      }
+
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (e.key === '/') {
+          e.preventDefault()
+          openSearch()
+          return true
+        }
+        if (e.key === 'b' || e.key === 'B') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('dalil:bookmark-current'))
+          return true
+        }
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('dalil:share-current'))
+          return true
+        }
+        if (e.key === 'c' || e.key === 'C') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('dalil:toggle-compare'))
+          return true
+        }
+        if (e.key === 'n' || e.key === 'N') {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('dalil:toggle-notes'))
+          return true
+        }
       }
 
       // Cmd+1..9 — switch collection
@@ -100,6 +133,36 @@ export function useKeyboardShortcuts(router: Router) {
           })
           return true
         }
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:open-bookmarks-panel'))
+        return true
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:open-recent-panel'))
+        return true
+      }
+
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:new-tab-intent'))
+        return true
+      }
+
+      if (e.ctrlKey && e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:tab-next'))
+        return true
+      }
+
+      if (e.ctrlKey && e.key === 'Tab' && e.shiftKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:tab-prev'))
+        return true
       }
 
       for (const shortcut of shortcuts) {

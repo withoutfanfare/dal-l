@@ -20,7 +20,9 @@ const shortcutGroups = [
       { keys: ['Cmd', 'K'], description: 'Open search' },
       { keys: ['Cmd', '\\'], description: 'Toggle sidebar' },
       { keys: ['Cmd', 'Shift', 'L'], description: 'Toggle dark mode' },
-      // HIDDEN: AI — { keys: ['Cmd', 'Shift', 'A'], description: 'Toggle AI panel' },
+      { keys: ['Cmd', 'Shift', 'A'], description: 'Toggle AI panel' },
+      { keys: ['Cmd', 'Shift', 'B'], description: 'Open bookmarks panel' },
+      { keys: ['Cmd', 'Shift', 'R'], description: 'Open recent panel' },
       { keys: ['Cmd', '?'], description: 'Keyboard shortcuts' },
     ],
   },
@@ -29,6 +31,19 @@ const shortcutGroups = [
     shortcuts: [
       { keys: ['Cmd', '['], description: 'Navigate back' },
       { keys: ['Cmd', ']'], description: 'Navigate forward' },
+      { keys: ['Cmd', 'T'], description: 'Start new tab' },
+      { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
+      { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
+    ],
+  },
+  {
+    label: 'Document',
+    shortcuts: [
+      { keys: ['B'], description: 'Bookmark current page' },
+      { keys: ['S'], description: 'Copy page link' },
+      { keys: ['C'], description: 'Toggle compare mode' },
+      { keys: ['N'], description: 'Focus notes sidebar' },
+      { keys: ['/'], description: 'Focus search' },
     ],
   },
   {
@@ -39,13 +54,12 @@ const shortcutGroups = [
       { keys: ['Enter'], description: 'Open selected result' },
     ],
   },
-  // HIDDEN: AI
-  // {
-  //   label: 'AI',
-  //   shortcuts: [
-  //     { keys: ['Esc'], description: 'Close AI panel' },
-  //   ],
-  // },
+  {
+    label: 'AI',
+    shortcuts: [
+      { keys: ['Esc'], description: 'Close AI panel' },
+    ],
+  },
 ]
 
 let unregister: (() => void) | null = null
