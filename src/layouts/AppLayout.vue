@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Sidebar from '@/components/sidebar/Sidebar.vue'
+import AddProjectDialog from '@/components/projects/AddProjectDialog.vue'
 import { useSidebar } from '@/composables/useSidebar'
 import { useCollections } from '@/composables/useCollections'
 import { useProjects } from '@/composables/useProjects'
@@ -28,6 +29,8 @@ const router = useRouter()
 useKeyboardShortcuts(router)
 useScrollMemory(router)
 const { restoreIfHome } = useLastVisited(router)
+
+const showAddProject = ref(false)
 
 // Sidebar resize drag (throttled with rAF, persist only on mouseup)
 const isResizing = ref(false)
@@ -151,7 +154,7 @@ onUnmounted(() => {
       :class="{ 'sidebar-transition': !isResizing }"
       :style="{ width: collapsed ? '0px' : sidebarWidth + 'px' }"
     >
-      <Sidebar v-show="!collapsed" />
+      <Sidebar v-show="!collapsed" @add-project="showAddProject = true" />
     </div>
 
     <!-- Resize handle -->
@@ -168,5 +171,8 @@ onUnmounted(() => {
         <router-view />
       </div>
     </main>
+
+    <!-- Add project dialog -->
+    <AddProjectDialog v-if="showAddProject" @close="showAddProject = false" />
   </div>
 </template>

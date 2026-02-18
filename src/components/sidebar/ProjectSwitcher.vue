@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useProjects } from '@/composables/useProjects'
+import ProjectContextMenu from '@/components/projects/ProjectContextMenu.vue'
+import type { Project } from '@/lib/types'
 
 const emit = defineEmits<{
   'add-project': []
 }>()
 
 const { projects, activeProject, switchProject } = useProjects()
+const router = useRouter()
 const isOpen = ref(false)
+
+// Context menu state
+const contextMenuProject = ref<{ id: string; name: string; builtIn: boolean } | null>(null)
+const contextMenuPosition = ref({ x: 0, y: 0 })
 
 function toggleDropdown() {
   isOpen.value = !isOpen.value
@@ -15,6 +23,7 @@ function toggleDropdown() {
 
 function selectProject(id: string) {
   switchProject(id)
+  router.push('/')
   isOpen.value = false
 }
 
@@ -26,6 +35,12 @@ function handleAddProject() {
 // Close on click outside
 function onClickOutside() {
   isOpen.value = false
+}
+
+function onProjectContextMenu(event: MouseEvent, project: Project) {
+  event.preventDefault()
+  contextMenuProject.value = { id: project.id, name: project.name, builtIn: project.builtIn }
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
 }
 </script>
 
@@ -74,6 +89,7 @@ function onClickOutside() {
             ? 'bg-surface-secondary text-text-primary font-medium'
             : 'text-text-secondary hover:bg-surface-secondary hover:text-text-primary'"
           @click="selectProject(project.id)"
+          @contextmenu="onProjectContextMenu($event, project)"
         >
           <span v-if="project.icon" class="text-base">{{ project.icon }}</span>
           <span class="truncate">{{ project.name }}</span>
@@ -108,5 +124,22 @@ function onClickOutside() {
 
     <!-- Click-outside overlay -->
     <div v-if="isOpen" class="fixed inset-0 z-40" @click="onClickOutside" />
+
+    <!-- Context menu -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenuProject"
+        class="fixed z-[100]"
+        :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }"
+      >
+        <ProjectContextMenu
+          :project-id="contextMenuProject.id"
+          :project-name="contextMenuProject.name"
+          :built-in="contextMenuProject.builtIn"
+          @close="contextMenuProject = null"
+        />
+      </div>
+      <div v-if="contextMenuProject" class="fixed inset-0 z-[99]" @click="contextMenuProject = null" />
+    </Teleport>
   </div>
 </template>
