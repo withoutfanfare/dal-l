@@ -290,7 +290,7 @@ function onNoteInput(event: Event) {
     >
       <button
         v-if="showBackToTop"
-        class="sticky bottom-2 ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-surface/75 shadow-lg backdrop-blur text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
+        class="fixed bottom-5 right-6 z-[70] flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-surface/75 shadow-lg backdrop-blur text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
         title="Back to top"
         @click="emit('scroll-top')"
       >

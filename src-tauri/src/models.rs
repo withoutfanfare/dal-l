@@ -67,6 +67,7 @@ pub struct ProjectStats {
     pub collection_count: i32,
     pub tag_count: i32,
     pub chunk_count: i32,
+    pub embedding_count: i32,
     pub db_size_bytes: u64,
 }
 
@@ -184,7 +185,7 @@ impl Default for Settings {
             openai_api_key: None,
             anthropic_api_key: None,
             gemini_api_key: None,
-            ollama_base_url: Some("http://localhost:11434".to_string()),
+            ollama_base_url: None,
             preferred_provider: None,
             anthropic_model: None,
             gemini_model: None,

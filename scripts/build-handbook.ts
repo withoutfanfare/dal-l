@@ -26,6 +26,8 @@ import type { DocumentMetadata } from './lib/extract-metadata.js'
 const DB_PATH = path.resolve(import.meta.dirname, '..', 'dalil.db')
 const CONFIG_PATH = path.resolve(import.meta.dirname, '..', 'dalil.config.ts')
 const CONCURRENCY = 8
+const OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small'
+const EMBEDDING_BATCH_SIZE = 32
 
 /** Shiki languages explicitly loaded to avoid bundling every grammar. */
 const SHIKI_LANGS = [
@@ -103,6 +105,97 @@ interface ProcessedFile {
   contentHtml: string
   fullSlug: string
   level: number
+}
+
+function encodeEmbedding(embedding: number[]): Buffer {
+  const out = Buffer.allocUnsafe(embedding.length * 4)
+  for (let i = 0; i < embedding.length; i++) {
+    out.writeFloatLE(embedding[i], i * 4)
+  }
+  return out
+}
+
+async function fetchOpenAiEmbeddings(apiKey: string, inputs: string[]): Promise<number[][]> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 45_000)
+
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    signal: controller.signal,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OPENAI_EMBEDDING_MODEL,
+      input: inputs,
+    }),
+  }).finally(() => clearTimeout(timeout))
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '')
+    throw new Error(`OpenAI embeddings API error (${response.status}): ${errorText}`)
+  }
+
+  const payload = await response.json() as {
+    data: Array<{ index: number; embedding: number[] }>
+  }
+
+  return payload.data
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.embedding)
+}
+
+async function maybeGenerateEmbeddings(db: ReturnType<typeof createDatabase>) {
+  const openAiApiKey = process.env.OPENAI_API_KEY?.trim()
+  if (!openAiApiKey) {
+    console.log('  Skipping embeddings (OPENAI_API_KEY not set)')
+    return
+  }
+
+  const chunkRows = db
+    .prepare('SELECT id, content_text FROM chunks ORDER BY id ASC')
+    .all() as Array<{ id: number; content_text: string }>
+
+  if (chunkRows.length === 0) {
+    console.log('  Skipping embeddings (no chunks found)')
+    return
+  }
+
+  console.log(`  Generating embeddings for ${chunkRows.length} chunks (${OPENAI_EMBEDDING_MODEL})`)
+
+  const clearStmt = db.prepare('DELETE FROM chunk_embeddings')
+  const insertStmt = db.prepare(`
+    INSERT OR REPLACE INTO chunk_embeddings (chunk_id, embedding)
+    VALUES (?, ?)
+  `)
+  const insertBatch = db.transaction((rows: Array<{ id: number; content_text: string }>, vectors: number[][]) => {
+    for (let i = 0; i < rows.length; i++) {
+      const chunkId = rows[i].id
+      const embeddingBlob = encodeEmbedding(vectors[i])
+      insertStmt.run(chunkId, embeddingBlob)
+    }
+  })
+
+  clearStmt.run()
+
+  for (let start = 0; start < chunkRows.length; start += EMBEDDING_BATCH_SIZE) {
+    const batch = chunkRows.slice(start, start + EMBEDDING_BATCH_SIZE)
+    const vectors = await fetchOpenAiEmbeddings(
+      openAiApiKey,
+      batch.map((row) => row.content_text),
+    )
+    if (vectors.length !== batch.length) {
+      throw new Error(`Embedding batch size mismatch: expected ${batch.length}, got ${vectors.length}`)
+    }
+    insertBatch(batch, vectors)
+
+    if ((start + batch.length) % (EMBEDDING_BATCH_SIZE * 2) === 0 || start + batch.length === chunkRows.length) {
+      process.stdout.write(`  Embedded ${start + batch.length}/${chunkRows.length} chunks\r`)
+    }
+  }
+
+  process.stdout.write('\n')
 }
 
 /**
@@ -351,14 +444,22 @@ async function main() {
         throw err
       }
 
+      try {
+        await maybeGenerateEmbeddings(db)
+      } catch (error) {
+        console.warn(`  Warning: failed to generate embeddings: ${String(error)}`)
+      }
+
       const docCount = (db.prepare('SELECT count(*) as count FROM documents').get() as { count: number }).count
       const chunkCount = (db.prepare('SELECT count(*) as count FROM chunks').get() as { count: number }).count
+      const embeddingCount = (db.prepare('SELECT count(*) as count FROM chunk_embeddings').get() as { count: number }).count
       const tagCount = (db.prepare('SELECT count(*) as count FROM tags').get() as { count: number }).count
       const navCount = (db.prepare('SELECT count(*) as count FROM navigation_tree').get() as { count: number }).count
 
       console.log('\n  Summary:')
       console.log(`  Documents: ${docCount}`)
       console.log(`  Chunks: ${chunkCount}`)
+      console.log(`  Embeddings: ${embeddingCount}`)
       console.log(`  Tags: ${tagCount}`)
       console.log(`  Navigation nodes: ${navCount}`)
       console.log('\n  Done!')
@@ -395,14 +496,22 @@ async function main() {
       throw err
     }
 
+    try {
+      await maybeGenerateEmbeddings(db)
+    } catch (error) {
+      console.warn(`  Warning: failed to generate embeddings: ${String(error)}`)
+    }
+
     const docCount = (db.prepare('SELECT count(*) as count FROM documents').get() as { count: number }).count
     const chunkCount = (db.prepare('SELECT count(*) as count FROM chunks').get() as { count: number }).count
+    const embeddingCount = (db.prepare('SELECT count(*) as count FROM chunk_embeddings').get() as { count: number }).count
     const tagCount = (db.prepare('SELECT count(*) as count FROM tags').get() as { count: number }).count
     const navCount = (db.prepare('SELECT count(*) as count FROM navigation_tree').get() as { count: number }).count
 
     console.log('\n  Summary:')
     console.log(`  Documents: ${docCount}`)
     console.log(`  Chunks: ${chunkCount}`)
+    console.log(`  Embeddings: ${embeddingCount}`)
     console.log(`  Tags: ${tagCount}`)
     console.log(`  Navigation nodes: ${navCount}`)
     console.log('\n  Done!')
