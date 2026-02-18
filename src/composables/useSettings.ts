@@ -17,7 +17,8 @@ const saving = ref(false)
 
 const isConfigured = computed(() => {
   const s = settings.value
-  return !!(s.openai_api_key || s.anthropic_api_key || s.gemini_api_key || s.ollama_base_url)
+  const hasOllamaUrl = !!s.ollama_base_url?.trim()
+  return !!(s.openai_api_key || s.anthropic_api_key || s.gemini_api_key || hasOllamaUrl)
 })
 
 export function useSettings() {

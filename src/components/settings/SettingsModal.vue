@@ -199,7 +199,7 @@ onUnmounted(() => {
             ref="ollamaRef"
             provider="ollama"
             label="Ollama"
-            :value="draft.ollama_base_url ?? 'http://localhost:11434'"
+            :value="draft.ollama_base_url ?? ''"
             placeholder="http://localhost:11434"
             note="Runs locally. No API key needed. Ensure Ollama is running."
             is-url

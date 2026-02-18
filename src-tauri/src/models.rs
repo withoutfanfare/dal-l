@@ -67,6 +67,7 @@ pub struct ProjectStats {
     pub collection_count: i32,
     pub tag_count: i32,
     pub chunk_count: i32,
+    pub embedding_count: i32,
     pub db_size_bytes: u64,
 }
 

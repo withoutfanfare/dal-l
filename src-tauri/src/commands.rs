@@ -33,6 +33,9 @@ pub fn get_project_stats(
     let chunk_count: i32 = conn
         .query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))
         .unwrap_or(0);
+    let embedding_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM chunk_embeddings", [], |row| row.get(0))
+        .unwrap_or(0);
 
     // Determine DB file path for size calculation
     let project = mgr.registry.projects.iter().find(|p| p.id == project_id);
@@ -56,6 +59,7 @@ pub fn get_project_stats(
         collection_count,
         tag_count,
         chunk_count,
+        embedding_count,
         db_size_bytes,
     })
 }

@@ -83,6 +83,7 @@ export interface ProjectStats {
   collectionCount: number
   tagCount: number
   chunkCount: number
+  embeddingCount: number
   dbSizeBytes: number
 }
 

@@ -340,6 +340,14 @@ onMounted(async () => {
           <span class="bg-surface-secondary rounded-full px-2.5 py-1 text-xs text-text-secondary">
             {{ stats.get(project.id)!.chunkCount }} chunks
           </span>
+          <span
+            class="rounded-full px-2.5 py-1 text-xs"
+            :class="stats.get(project.id)!.embeddingCount > 0
+              ? 'bg-surface-secondary text-text-secondary'
+              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'"
+          >
+            {{ stats.get(project.id)!.embeddingCount }} embeddings
+          </span>
           <span class="bg-surface-secondary rounded-full px-2.5 py-1 text-xs text-text-secondary">
             {{ stats.get(project.id)!.collectionCount }} collections
           </span>
