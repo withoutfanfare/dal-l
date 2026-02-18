@@ -383,29 +383,45 @@ And the last active tab is selected.
 5. Updated-since-viewed activity model and home “Continue Reading / Recently Updated” surfaces.
 6. Re-enabled AI panel and settings behind feature flag with Gemini support and request-scoped cancel handling.
 7. Compare mode and personal notes/highlights (now in the right doc sidebar).
-8. Top-bar bookmarks panel and collection-scoped bookmarks pages (`/bookmarks/:collection?`).
+8. Top-bar bookmarks panel and collection-scoped bookmarks pages (`/bookmarks/:collection?`), with top-bar navigation controls now positioned on the left for better use of sidebar space.
+9. Navigation continuity implementation:
+   - top-bar Back/Forward controls
+   - top-bar Recently viewed popover
+   - keyboard actions to open bookmarks/recent panels
+10. Multi-document tabs implementation:
+   - open/close tabs
+   - per-collection persistence and restore
+   - drag-and-drop tab reorder
+   - keyboard next/previous tab switching
+   - constrained-width overflow scroll affordances (left/right controls)
+   - pin/unpin tabs with persisted state
+   - overflow menu for large tab sets (quick switch, pin/unpin, close)
+   - advanced large-set ergonomics (pinned filter + close-unpinned action)
+11. Deep-link missing-project guided resume flow:
+   - pending target persisted locally
+   - Projects page resume/switch/dismiss banner actions
+12. “What changed” top-bar panel:
+   - project change-feed popover with commit metadata and changed-doc quick links
+   - unread/new indicators integrated with updated-doc activity badges
+13. Bookmark scalability baseline:
+   - virtualized rendering in the Bookmarks page for large result sets
+14. AI citation baseline:
+   - backend emits source references per request
+   - Ask UI renders clickable source references for answers
+15. Search ranking tuning baseline:
+   - composite relevance ordering for command search (bookmarks + recency + active collection + text intent)
 
 ### Outstanding (Prioritized)
 
-1. Bookmark scalability polish:
-   - virtualized lists for large bookmark volumes
-   - pinned/favourite bookmarks
-   - keyboard shortcut to open top-bar bookmarks panel
-2. Deep-link missing-project guided resume flow:
-   - “switch/add project” prompt with preserved target payload
-3. Documentation change feed UI:
-   - “What changed” drawer powered by captured git change feed
-4. AI citation UX:
-   - explicit citation rendering in AI responses (doc/chunk references)
-5. Navigation continuity:
-   - top-bar Back/Forward controls
-   - top-bar Recently viewed panel
-6. Multi-document tabs:
-   - open/close/reorder tabs
-   - per-collection persistence and restore
-7. Search ranking tuning:
-   - recency/bookmark/project relevance weighting refinement
+1. Tabs and constrained-width polish:
+   - optional additional bulk-close modes beyond “close unpinned” (for future)
+2. Bookmark scalability polish (phase 2):
+   - pinned/favourite bookmarks and stronger recency/frequency affordances
+3. Search ranking tuning (phase 2):
+   - calibrate weighting with usage telemetry and edge-case query audits
+4. QA hardening for new UX:
+   - automated coverage for tab reorder/persistence, deep-link pending resume, and bookmark virtualization
 
 ## Immediate Next Execution Step
 
-Execute Navigation Continuity + Tabs design spike first (top-bar layout and overflow behavior), then implement persisted tab model and recently viewed integration, followed by bookmark virtualization and AI citation UI completion.
+Add regression coverage for tab persistence/reorder, pending deep-link resume, and bookmark virtualization flows, then calibrate search relevance weights from real usage.

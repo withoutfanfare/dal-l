@@ -102,6 +102,10 @@ function togglePanel() {
   panelOpen.value = !panelOpen.value
 }
 
+function openPanel() {
+  panelOpen.value = true
+}
+
 function onDocumentClick(event: MouseEvent) {
   if (!panelOpen.value || !rootRef.value) return
   const target = event.target as Node
@@ -128,11 +132,13 @@ watch(
 onMounted(() => {
   window.document.addEventListener('click', onDocumentClick)
   window.document.addEventListener('keydown', onDocumentKeydown)
+  window.addEventListener('dalil:open-bookmarks-panel', openPanel)
 })
 
 onUnmounted(() => {
   window.document.removeEventListener('click', onDocumentClick)
   window.document.removeEventListener('keydown', onDocumentKeydown)
+  window.removeEventListener('dalil:open-bookmarks-panel', openPanel)
 })
 </script>
 
@@ -160,7 +166,7 @@ onUnmounted(() => {
     >
       <div
         v-if="panelOpen"
-        class="absolute right-0 top-9 z-[120] w-[420px] max-w-[80vw] rounded-xl border border-border bg-surface shadow-2xl"
+        class="absolute left-0 top-9 z-[120] w-[420px] max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-surface shadow-2xl"
         style="-webkit-app-region: no-drag"
       >
         <div class="px-3 py-2.5 border-b border-border">

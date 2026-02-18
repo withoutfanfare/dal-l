@@ -161,6 +161,7 @@ onUnmounted(() => {
             :loading="entry.loading"
             :error="entry.error"
             :provider="entry.provider"
+            :sources="entry.sources"
           />
         </div>
       </div>

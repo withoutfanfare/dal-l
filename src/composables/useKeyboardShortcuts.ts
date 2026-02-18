@@ -135,6 +135,30 @@ export function useKeyboardShortcuts(router: Router) {
         }
       }
 
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:open-bookmarks-panel'))
+        return true
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:open-recent-panel'))
+        return true
+      }
+
+      if (e.ctrlKey && e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:tab-next'))
+        return true
+      }
+
+      if (e.ctrlKey && e.key === 'Tab' && e.shiftKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:tab-prev'))
+        return true
+      }
+
       for (const shortcut of shortcuts) {
         const metaMatch = shortcut.meta ? (e.metaKey || e.ctrlKey) : !(e.metaKey || e.ctrlKey)
         const shiftMatch = shortcut.shift ? e.shiftKey : !e.shiftKey

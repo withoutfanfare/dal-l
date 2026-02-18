@@ -2,7 +2,7 @@ use crate::models::{AiProvider, ScoredChunk, Settings};
 use crate::projects::ProjectManager;
 use rusqlite::params;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
@@ -37,11 +37,77 @@ pub struct AiResponseErrorEvent {
     pub message: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSourceReference {
+    pub chunk_id: i32,
+    pub document_id: i32,
+    pub doc_slug: String,
+    pub doc_title: String,
+    pub heading_context: String,
+    pub excerpt: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiResponseSourcesEvent {
+    pub request_id: String,
+    pub sources: Vec<AiSourceReference>,
+}
+
 pub fn error_event(request_id: &str, message: &str) -> AiResponseErrorEvent {
     AiResponseErrorEvent {
         request_id: request_id.to_string(),
         message: message.to_string(),
     }
+}
+
+fn build_source_references(
+    db: &rusqlite::Connection,
+    chunks: &[ScoredChunk],
+    limit: usize,
+) -> Result<Vec<AiSourceReference>, String> {
+    if chunks.is_empty() || limit == 0 {
+        return Ok(vec![]);
+    }
+
+    let mut doc_meta: HashMap<i32, (String, String)> = HashMap::new();
+    let mut stmt = db
+        .prepare_cached("SELECT slug, title FROM documents WHERE id = ?1 LIMIT 1")
+        .map_err(|e| e.to_string())?;
+
+    let mut sources = Vec::new();
+    for chunk in chunks.iter().take(limit) {
+        let (doc_slug, doc_title) = if let Some(cached) = doc_meta.get(&chunk.document_id) {
+            cached.clone()
+        } else {
+            let meta = stmt
+                .query_row(params![chunk.document_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| format!("Failed to resolve source document: {}", e))?;
+            doc_meta.insert(chunk.document_id, meta.clone());
+            meta
+        };
+
+        let excerpt = chunk
+            .content_text
+            .split_whitespace()
+            .take(28)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        sources.push(AiSourceReference {
+            chunk_id: chunk.id,
+            document_id: chunk.document_id,
+            doc_slug,
+            doc_title,
+            heading_context: chunk.heading_context.clone(),
+            excerpt,
+        });
+    }
+
+    Ok(sources)
 }
 
 pub fn cancel_request(request_id: &str) -> Result<(), String> {
@@ -1236,19 +1302,30 @@ pub async fn ask_question_rag(
     let query_embedding = generate_embedding(&client, &settings, &provider, &question).await;
 
     // Step 2: Search for relevant chunks
-    let chunks = {
+    let (chunks, sources) = {
         let manager = app.state::<Mutex<ProjectManager>>();
         let mgr = manager.lock().map_err(|e| e.to_string())?;
         let conn = mgr.active_connection()?;
 
-        match query_embedding {
+        let chunks = match query_embedding {
             Ok(ref embedding) => hybrid_search(&conn, embedding, &question, 8)?,
             Err(_) => {
                 // If embedding generation failed, fall back to FTS only
                 fts_chunk_search(&conn, &question, 8)?
             }
-        }
+        };
+
+        let sources = build_source_references(&conn, &chunks, 6)?;
+        (chunks, sources)
     };
+
+    let _ = app.emit(
+        "ai-response-sources",
+        AiResponseSourcesEvent {
+            request_id: request_id.clone(),
+            sources,
+        },
+    );
 
     // Step 3: Build prompt
     let messages = build_rag_prompt(&chunks, &question);

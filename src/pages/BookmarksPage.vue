@@ -44,6 +44,8 @@ const newTagName = ref('')
 
 const bulkFolderId = ref<number | 'none'>('none')
 const bulkTagIds = ref<number[]>([])
+const listContainer = ref<HTMLElement | null>(null)
+const listScrollTop = ref(0)
 const recovery = ref<{
   bookmarkId: number
   message: string
@@ -94,6 +96,41 @@ const collectionCounts = computed(() => {
     .map(([collectionId, count]) => ({ collectionId, count }))
     .sort((a, b) => b.count - a.count)
 })
+
+const virtualRowHeight = 126
+const virtualOverscan = 10
+
+const virtualEnabled = computed(() => filteredBookmarks.value.length > 140)
+
+const virtualViewportHeight = computed(() =>
+  listContainer.value?.clientHeight ?? 600,
+)
+
+const virtualStart = computed(() => {
+  if (!virtualEnabled.value) return 0
+  const start = Math.floor(listScrollTop.value / virtualRowHeight) - virtualOverscan
+  return Math.max(0, start)
+})
+
+const virtualEnd = computed(() => {
+  if (!virtualEnabled.value) return filteredBookmarks.value.length
+  const visibleRows = Math.ceil(virtualViewportHeight.value / virtualRowHeight) + (virtualOverscan * 2)
+  return Math.min(filteredBookmarks.value.length, virtualStart.value + visibleRows)
+})
+
+const renderedBookmarks = computed(() =>
+  filteredBookmarks.value.slice(virtualStart.value, virtualEnd.value),
+)
+
+const topSpacerHeight = computed(() =>
+  virtualEnabled.value ? virtualStart.value * virtualRowHeight : 0,
+)
+
+const bottomSpacerHeight = computed(() =>
+  virtualEnabled.value
+    ? Math.max(0, (filteredBookmarks.value.length - virtualEnd.value) * virtualRowHeight)
+    : 0,
+)
 
 const activeCollectionLabel = computed(() => {
   if (selectedCollectionFilter.value === 'all') return 'All folders'
@@ -164,6 +201,11 @@ function selectAllVisible() {
 
 function clearSelection() {
   selectedBookmarkIds.value = []
+}
+
+function onListScroll(event: Event) {
+  const element = event.target as HTMLElement
+  listScrollTop.value = element.scrollTop
 }
 
 async function handleCreateFolder() {
@@ -583,7 +625,62 @@ onMounted(() => {
 
       <div class="space-y-2">
         <div
-          v-for="bookmark in filteredBookmarks"
+          v-if="virtualEnabled"
+          ref="listContainer"
+          class="max-h-[64vh] overflow-y-auto rounded-lg border border-border bg-surface p-2"
+          @scroll="onListScroll"
+        >
+          <div :style="{ height: `${topSpacerHeight}px` }" />
+          <div class="space-y-2">
+            <div
+              v-for="bookmark in renderedBookmarks"
+              :key="bookmark.id"
+              class="rounded-lg border border-border bg-surface p-3 transition-colors hover:bg-surface-secondary/70 min-h-[110px]"
+            >
+              <div class="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  class="mt-1"
+                  :checked="isSelected(bookmark.id)"
+                  @change="toggleSelected(bookmark.id)"
+                >
+                <button class="flex-1 text-left" @click="openBookmark(bookmark.id)">
+                  <p class="text-sm font-medium text-text-primary">{{ bookmark.titleSnapshot }}</p>
+                  <p class="text-xs text-text-secondary mt-1 truncate">
+                    {{ bookmark.docSlug }}<span v-if="bookmark.anchorId">#{{ bookmark.anchorId }}</span>
+                  </p>
+                  <p class="text-[11px] text-text-secondary/80 mt-1">
+                    {{ collectionName(bookmark.collectionId) }}
+                  </p>
+                  <p class="text-[11px] text-text-secondary/80 mt-1">
+                    Last opened: {{ formatDate(bookmark.lastOpenedAt) }}
+                  </p>
+                </button>
+              </div>
+              <div class="mt-2 flex flex-wrap items-center gap-1.5 ml-6">
+                <span
+                  v-for="folderId in (relationByBookmarkId.get(bookmark.id)?.folderIds ?? [])"
+                  :key="`folder-${bookmark.id}-${folderId}`"
+                  class="rounded-full bg-accent/10 text-accent px-2 py-0.5 text-[11px]"
+                >
+                  {{ folderName(folderId) }}
+                </span>
+                <span
+                  v-for="tagId in (relationByBookmarkId.get(bookmark.id)?.tagIds ?? [])"
+                  :key="`tag-${bookmark.id}-${tagId}`"
+                  class="rounded-full bg-surface-secondary text-text-secondary px-2 py-0.5 text-[11px]"
+                >
+                  #{{ tagName(tagId) }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div :style="{ height: `${bottomSpacerHeight}px` }" />
+        </div>
+
+        <template v-else>
+        <div
+          v-for="bookmark in renderedBookmarks"
           :key="bookmark.id"
           class="rounded-lg border border-border bg-surface p-3 transition-colors hover:bg-surface-secondary/70"
         >
@@ -624,6 +721,7 @@ onMounted(() => {
             </span>
           </div>
         </div>
+        </template>
       </div>
     </div>
   </div>

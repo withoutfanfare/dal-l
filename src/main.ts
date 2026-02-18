@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import { getDocument, listProjects, searchDocuments, setActiveProject } from '@/lib/api'
 import { docSlugWithoutCollection, parseDeepLink } from '@/lib/deepLinks'
+import { clearPendingDeepLink, setPendingDeepLink } from '@/lib/pendingDeepLink'
 import './style.css'
 import './composables/useTheme'
 
@@ -30,9 +31,10 @@ async function resolveDeepLink(url: string) {
   if (parsed.projectId) {
     const matchingProject = projects.find((project) => project.id === parsed.projectId)
     if (!matchingProject) {
+      setPendingDeepLink(parsed)
       emitDeepLinkStatus(
         'missing-project',
-        `Project "${parsed.projectId}" is not configured on this machine.`,
+        `Project "${parsed.projectId}" is not configured. Add or switch project, then resume from Projects.`,
         { projectId: parsed.projectId, collectionId: parsed.collectionId, docSlug: parsed.docSlug, anchorId: parsed.anchorId },
       )
       await router.push('/projects')
@@ -64,6 +66,7 @@ async function resolveDeepLink(url: string) {
         { collectionId: parsed.collectionId, docSlug: parsed.docSlug, anchorId: parsed.anchorId },
       )
     }
+    clearPendingDeepLink()
     return
   } catch {
     // Fall through to nearest document fallback.
@@ -86,6 +89,7 @@ async function resolveDeepLink(url: string) {
       'The original document was not found. Opened the closest match instead.',
       { requestedSlug: parsed.docSlug, resolvedSlug: nearest.slug },
     )
+    clearPendingDeepLink()
     return
   }
 

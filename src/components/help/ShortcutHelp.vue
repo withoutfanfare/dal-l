@@ -21,6 +21,8 @@ const shortcutGroups = [
       { keys: ['Cmd', '\\'], description: 'Toggle sidebar' },
       { keys: ['Cmd', 'Shift', 'L'], description: 'Toggle dark mode' },
       { keys: ['Cmd', 'Shift', 'A'], description: 'Toggle AI panel' },
+      { keys: ['Cmd', 'Shift', 'B'], description: 'Open bookmarks panel' },
+      { keys: ['Cmd', 'Shift', 'R'], description: 'Open recent panel' },
       { keys: ['Cmd', '?'], description: 'Keyboard shortcuts' },
     ],
   },
@@ -29,6 +31,8 @@ const shortcutGroups = [
     shortcuts: [
       { keys: ['Cmd', '['], description: 'Navigate back' },
       { keys: ['Cmd', ']'], description: 'Navigate forward' },
+      { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
+      { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
     ],
   },
   {

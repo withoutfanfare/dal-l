@@ -5,6 +5,7 @@ export interface DocTab {
   slug: string
   title: string
   lastOpenedAt: number
+  pinned?: boolean
 }
 
 interface TabBucket {
@@ -166,12 +167,93 @@ export function useDocTabs() {
     persist()
   }
 
+  function togglePinTab(projectId: string, collectionId: string, slug: string): boolean | null {
+    const bucket = ensureBucket(projectId, collectionId)
+    const idx = bucket.tabs.findIndex((item) => item.slug === slug)
+    if (idx < 0) return null
+
+    const current = bucket.tabs[idx]
+    const nextPinned = !current.pinned
+    const updated = {
+      ...current,
+      pinned: nextPinned,
+      lastOpenedAt: Date.now(),
+    }
+
+    bucket.tabs[idx] = updated
+    const [moved] = bucket.tabs.splice(idx, 1)
+
+    if (nextPinned) {
+      const firstUnpinnedIndex = bucket.tabs.findIndex((item) => !item.pinned)
+      const targetIndex = firstUnpinnedIndex === -1 ? bucket.tabs.length : firstUnpinnedIndex
+      bucket.tabs.splice(targetIndex, 0, moved)
+    } else {
+      let lastPinnedIndex = -1
+      for (let i = bucket.tabs.length - 1; i >= 0; i -= 1) {
+        if (bucket.tabs[i].pinned) {
+          lastPinnedIndex = i
+          break
+        }
+      }
+      bucket.tabs.splice(lastPinnedIndex + 1, 0, moved)
+    }
+
+    persist()
+    return nextPinned
+  }
+
+  function moveTab(projectId: string, collectionId: string, slug: string, targetIndex: number) {
+    const bucket = ensureBucket(projectId, collectionId)
+    const fromIndex = bucket.tabs.findIndex((item) => item.slug === slug)
+    if (fromIndex < 0) return
+
+    const boundedIndex = Math.max(0, Math.min(targetIndex, bucket.tabs.length - 1))
+    if (fromIndex === boundedIndex) return
+
+    const [moved] = bucket.tabs.splice(fromIndex, 1)
+    bucket.tabs.splice(boundedIndex, 0, moved)
+    persist()
+  }
+
+  function getAdjacentSlug(
+    projectId: string,
+    collectionId: string,
+    slug: string,
+    direction: -1 | 1,
+  ): string | null {
+    const bucket = ensureBucket(projectId, collectionId)
+    if (bucket.tabs.length === 0) return null
+    const currentIndex = bucket.tabs.findIndex((item) => item.slug === slug)
+    if (currentIndex < 0) return bucket.tabs[0]?.slug ?? null
+
+    const nextIndex = currentIndex + direction
+    if (nextIndex < 0 || nextIndex >= bucket.tabs.length) return null
+    return bucket.tabs[nextIndex]?.slug ?? null
+  }
+
   function clearCollectionTabs(projectId: string, collectionId: string) {
     const key = storageKey(projectId, collectionId)
     if (state.value[key]) {
       delete state.value[key]
       persist()
     }
+  }
+
+  function closeUnpinnedTabs(projectId: string, collectionId: string): string | null {
+    const bucket = ensureBucket(projectId, collectionId)
+    const kept = bucket.tabs.filter((tab) => tab.pinned)
+    if (kept.length === bucket.tabs.length) {
+      return bucket.activeSlug
+    }
+
+    const activeTab = bucket.tabs.find((tab) => tab.slug === bucket.activeSlug) ?? null
+    bucket.tabs = kept
+    if (!activeTab?.pinned) {
+      bucket.activeSlug = kept[kept.length - 1]?.slug ?? null
+    }
+
+    persist()
+    return bucket.activeSlug
   }
 
   return {
@@ -182,6 +264,10 @@ export function useDocTabs() {
     closeTab,
     setActiveTab,
     setTabTitle,
+    togglePinTab,
+    moveTab,
+    getAdjacentSlug,
     clearCollectionTabs,
+    closeUnpinnedTabs,
   }
 }

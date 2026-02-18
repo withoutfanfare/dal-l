@@ -31,7 +31,8 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             last_opened_at INTEGER,
-            order_index INTEGER NOT NULL DEFAULT 0
+            order_index INTEGER NOT NULL DEFAULT 0,
+            is_favorite INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS bookmark_folders (
@@ -127,6 +128,29 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
         ",
     )
     .map_err(|e| format!("Failed to initialise user state DB schema: {}", e))?;
+
+    // Backward-compatible migration for installs created before bookmark favourites existed.
+    let has_favorite_column: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('bookmarks') WHERE name = 'is_favorite'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to inspect bookmarks schema: {}", e))?;
+    if has_favorite_column == 0 {
+        conn.execute(
+            "ALTER TABLE bookmarks ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("Failed to add bookmarks.is_favorite column: {}", e))?;
+    }
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bookmarks_project_favorite
+         ON bookmarks(project_id, is_favorite DESC, updated_at DESC)",
+        [],
+    )
+    .map_err(|e| format!("Failed to create bookmarks favourite index: {}", e))?;
 
     Ok(conn)
 }

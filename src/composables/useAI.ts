@@ -4,6 +4,15 @@ import { askQuestion, cancelAiRequest } from '@/lib/api'
 import { useSettings } from './useSettings'
 import type { AiProvider } from '@/lib/types'
 
+export interface AiSourceReference {
+  chunkId: number
+  documentId: number
+  docSlug: string
+  docTitle: string
+  headingContext: string
+  excerpt: string
+}
+
 export interface ConversationEntry {
   id: string
   question: string
@@ -12,6 +21,7 @@ export interface ConversationEntry {
   error: string | null
   provider: AiProvider | null
   timestamp: number
+  sources: AiSourceReference[]
 }
 
 interface AiResponseChunkEvent {
@@ -27,6 +37,11 @@ interface AiResponseDoneEvent {
 interface AiResponseErrorEvent {
   requestId: string
   message: string
+}
+
+interface AiResponseSourcesEvent {
+  requestId: string
+  sources: AiSourceReference[]
 }
 
 const isOpen = ref(false)
@@ -45,7 +60,7 @@ function createRequestId(): string {
 async function ensureListeners() {
   if (listenersReady.value) return
 
-  const [unlistenChunk, unlistenDone, unlistenError] = await Promise.all([
+  const [unlistenChunk, unlistenDone, unlistenError, unlistenSources] = await Promise.all([
     listen<AiResponseChunkEvent>('ai-response-chunk', (event) => {
       const entry = entryByRequest.get(event.payload.requestId)
       if (!entry) return
@@ -67,9 +82,14 @@ async function ensureListeners() {
       entry.loading = false
       entryByRequest.delete(event.payload.requestId)
     }),
+    listen<AiResponseSourcesEvent>('ai-response-sources', (event) => {
+      const entry = entryByRequest.get(event.payload.requestId)
+      if (!entry) return
+      entry.sources = event.payload.sources ?? []
+    }),
   ])
 
-  unlistenFns.value = [unlistenChunk, unlistenDone, unlistenError]
+  unlistenFns.value = [unlistenChunk, unlistenDone, unlistenError, unlistenSources]
   listenersReady.value = true
 }
 
@@ -114,6 +134,7 @@ export function useAI() {
       error: null,
       provider: provider ?? null,
       timestamp: Date.now(),
+      sources: [],
     }
 
     conversations.value.push(entry)

@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useProjects } from '@/composables/useProjects'
-import { getProjectStats, openInEditor, getPreferences, savePreferences } from '@/lib/api'
+import { getProjectStats, openInEditor, getPreferences, savePreferences, getDocument, searchDocuments } from '@/lib/api'
 import type { ProjectStats, AppPreferences } from '@/lib/types'
 import AddProjectDialog from '@/components/projects/AddProjectDialog.vue'
+import { useToast } from '@/composables/useToast'
+import { clearPendingDeepLink, getPendingDeepLink, type PendingDeepLinkTarget } from '@/lib/pendingDeepLink'
+import { docSlugWithoutCollection } from '@/lib/deepLinks'
 
-const { projects, activeProject, buildStatus, rebuildProject, removeProject } = useProjects()
+const router = useRouter()
+const { addToast } = useToast()
+const { projects, activeProject, buildStatus, rebuildProject, removeProject, switchProject } = useProjects()
 
 const stats = ref<Map<string, ProjectStats>>(new Map())
 const showAddDialog = ref(false)
 const preferences = ref<AppPreferences>({ editorCommand: null })
 const customEditor = ref('')
 const removingId = ref<string | null>(null)
+const pendingDeepLink = ref<PendingDeepLinkTarget | null>(null)
 
 const EDITOR_PRESETS = [
   { label: 'VS Code', command: 'code' },
@@ -125,6 +132,65 @@ function handleDialogClose() {
   loadStats()
 }
 
+const pendingProjectExists = computed(() => {
+  const pending = pendingDeepLink.value
+  if (!pending?.projectId) return false
+  return projects.value.some((project) => project.id === pending.projectId)
+})
+
+async function resumePendingDeepLink() {
+  const pending = pendingDeepLink.value
+  if (!pending) return
+
+  const fullSlug = `${pending.collectionId}/${pending.docSlug}`
+  try {
+    const doc = await getDocument(fullSlug)
+    await router.push({
+      name: 'doc',
+      params: {
+        collection: doc.collection_id,
+        slug: docSlugWithoutCollection(doc.collection_id, doc.slug),
+      },
+      hash: pending.anchorId ? `#${pending.anchorId}` : '',
+    })
+    clearPendingDeepLink()
+    pendingDeepLink.value = null
+    return
+  } catch {
+    // Fall through to nearest candidate search.
+  }
+
+  const nearest = await searchDocuments(pending.docSlug, pending.collectionId, 1).catch(() => [])
+  if (nearest.length > 0) {
+    const doc = nearest[0]
+    await router.push({
+      name: 'doc',
+      params: {
+        collection: doc.collection_id,
+        slug: docSlugWithoutCollection(doc.collection_id, doc.slug),
+      },
+    })
+    addToast('Opened nearest available document for the pending deep link', 'info')
+    clearPendingDeepLink()
+    pendingDeepLink.value = null
+    return
+  }
+
+  addToast('Could not resolve pending deep link in the active project', 'error')
+}
+
+function dismissPendingDeepLink() {
+  clearPendingDeepLink()
+  pendingDeepLink.value = null
+}
+
+async function switchToPendingProject() {
+  const pending = pendingDeepLink.value
+  if (!pending?.projectId) return
+  await switchProject(pending.projectId)
+  await resumePendingDeepLink()
+}
+
 onMounted(async () => {
   preferences.value = await getPreferences()
   // Initialise custom editor field if the saved command isn't a preset
@@ -132,6 +198,7 @@ onMounted(async () => {
   if (cmd && !EDITOR_PRESETS.find(p => p.command === cmd)) {
     customEditor.value = cmd
   }
+  pendingDeepLink.value = getPendingDeepLink()
   await loadStats()
 })
 </script>
@@ -160,6 +227,39 @@ onMounted(async () => {
         Add Project
       </button>
     </header>
+
+    <div
+      v-if="pendingDeepLink"
+      class="mb-5 rounded-lg border border-amber-300/60 bg-amber-50/70 dark:bg-amber-950/20 dark:border-amber-700/60 p-3"
+    >
+      <p class="text-sm text-amber-900 dark:text-amber-200">
+        Pending deep link target: <span class="font-medium">{{ pendingDeepLink.collectionId }}/{{ pendingDeepLink.docSlug }}</span>
+      </p>
+      <p class="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1">
+        Add or switch to the correct project, then resume this target.
+      </p>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <button
+          v-if="pendingProjectExists"
+          class="rounded bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-amber-500 transition-colors"
+          @click="switchToPendingProject"
+        >
+          Switch to target project
+        </button>
+        <button
+          class="rounded border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 transition-colors dark:text-amber-200 dark:border-amber-700 dark:hover:bg-amber-900/40"
+          @click="resumePendingDeepLink"
+        >
+          Resume in active project
+        </button>
+        <button
+          class="rounded border border-border px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
+          @click="dismissPendingDeepLink"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
 
     <!-- Project cards -->
     <div class="space-y-4 mb-10">

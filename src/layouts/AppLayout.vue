@@ -119,8 +119,8 @@ function handleOpenSettings() {
       class="fixed top-0 left-0 right-0 h-[52px] z-50 flex items-center bg-surface/80 backdrop-blur-sm"
       style="-webkit-app-region: drag"
     >
-      <!-- Left side: sidebar toggle when collapsed -->
-      <div class="flex-1 flex items-center pl-[78px]" style="-webkit-app-region: no-drag">
+      <!-- Left side: navigation controls -->
+      <div class="flex-1 flex items-center gap-1.5 pl-[78px]" style="-webkit-app-region: no-drag">
         <Transition
           enter-active-class="duration-150 ease-out"
           enter-from-class="opacity-0 -translate-x-1"
@@ -140,6 +140,8 @@ function handleOpenSettings() {
             </svg>
           </button>
         </Transition>
+        <TopBarNavControls />
+        <TopBarBookmarks v-if="bookmarksEnabled" />
       </div>
 
       <!-- Centre: search trigger -->
@@ -161,8 +163,6 @@ function handleOpenSettings() {
 
       <!-- Right side toolbar actions -->
       <div class="pr-3 flex items-center gap-1.5" style="-webkit-app-region: no-drag">
-        <TopBarNavControls />
-        <TopBarBookmarks v-if="bookmarksEnabled" />
         <template v-if="showAiPanel">
           <button
             class="h-7 px-2.5 rounded-md text-xs font-medium transition-colors border border-border/60 bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border"
