@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import path from 'path'
+import Database from 'better-sqlite3'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
@@ -164,9 +165,16 @@ async function maybeGenerateEmbeddings(db: ReturnType<typeof createDatabase>) {
 
   console.log(`  Generating embeddings for ${chunkRows.length} chunks (${OPENAI_EMBEDDING_MODEL})`)
 
-  const clearStmt = db.prepare('DELETE FROM chunk_embeddings')
+  db.exec('DROP TABLE IF EXISTS temp.chunk_embeddings_next')
+  db.exec(`
+    CREATE TEMP TABLE temp.chunk_embeddings_next (
+      chunk_id INTEGER PRIMARY KEY,
+      embedding BLOB NOT NULL
+    )
+  `)
+
   const insertStmt = db.prepare(`
-    INSERT OR REPLACE INTO chunk_embeddings (chunk_id, embedding)
+    INSERT OR REPLACE INTO temp.chunk_embeddings_next (chunk_id, embedding)
     VALUES (?, ?)
   `)
   const insertBatch = db.transaction((rows: Array<{ id: number; content_text: string }>, vectors: number[][]) => {
@@ -177,25 +185,92 @@ async function maybeGenerateEmbeddings(db: ReturnType<typeof createDatabase>) {
     }
   })
 
-  clearStmt.run()
+  try {
+    for (let start = 0; start < chunkRows.length; start += EMBEDDING_BATCH_SIZE) {
+      const batch = chunkRows.slice(start, start + EMBEDDING_BATCH_SIZE)
+      const vectors = await fetchOpenAiEmbeddings(
+        openAiApiKey,
+        batch.map((row) => row.content_text),
+      )
+      if (vectors.length !== batch.length) {
+        throw new Error(`Embedding batch size mismatch: expected ${batch.length}, got ${vectors.length}`)
+      }
+      insertBatch(batch, vectors)
 
-  for (let start = 0; start < chunkRows.length; start += EMBEDDING_BATCH_SIZE) {
-    const batch = chunkRows.slice(start, start + EMBEDDING_BATCH_SIZE)
-    const vectors = await fetchOpenAiEmbeddings(
-      openAiApiKey,
-      batch.map((row) => row.content_text),
-    )
-    if (vectors.length !== batch.length) {
-      throw new Error(`Embedding batch size mismatch: expected ${batch.length}, got ${vectors.length}`)
+      if ((start + batch.length) % (EMBEDDING_BATCH_SIZE * 2) === 0 || start + batch.length === chunkRows.length) {
+        process.stdout.write(`  Embedded ${start + batch.length}/${chunkRows.length} chunks\r`)
+      }
     }
-    insertBatch(batch, vectors)
 
-    if ((start + batch.length) % (EMBEDDING_BATCH_SIZE * 2) === 0 || start + batch.length === chunkRows.length) {
-      process.stdout.write(`  Embedded ${start + batch.length}/${chunkRows.length} chunks\r`)
-    }
+    const replaceEmbeddings = db.transaction(() => {
+      db.prepare('DELETE FROM chunk_embeddings').run()
+      db.prepare(`
+        INSERT INTO chunk_embeddings (chunk_id, embedding)
+        SELECT chunk_id, embedding FROM temp.chunk_embeddings_next
+      `).run()
+    })
+    replaceEmbeddings()
+
+    process.stdout.write('\n')
+  } finally {
+    db.exec('DROP TABLE IF EXISTS temp.chunk_embeddings_next')
+  }
+}
+
+function readBuildCounts(db: ReturnType<typeof createDatabase>) {
+  const docCount = (db.prepare('SELECT count(*) as count FROM documents').get() as { count: number }).count
+  const chunkCount = (db.prepare('SELECT count(*) as count FROM chunks').get() as { count: number }).count
+  const embeddingCount = (db.prepare('SELECT count(*) as count FROM chunk_embeddings').get() as { count: number }).count
+  const tagCount = (db.prepare('SELECT count(*) as count FROM tags').get() as { count: number }).count
+  const navCount = (db.prepare('SELECT count(*) as count FROM navigation_tree').get() as { count: number }).count
+  return { docCount, chunkCount, embeddingCount, tagCount, navCount }
+}
+
+function printBuildSummary(db: ReturnType<typeof createDatabase>) {
+  const { docCount, chunkCount, embeddingCount, tagCount, navCount } = readBuildCounts(db)
+  console.log('\n  Summary:')
+  console.log(`  Documents: ${docCount}`)
+  console.log(`  Chunks: ${chunkCount}`)
+  console.log(`  Embeddings: ${embeddingCount}`)
+  console.log(`  Tags: ${tagCount}`)
+  console.log(`  Navigation nodes: ${navCount}`)
+}
+
+async function maybeBackfillEmbeddingsForFreshDatabase(): Promise<boolean> {
+  if (!existsSync(DB_PATH)) return false
+
+  let db: ReturnType<typeof createDatabase>
+  try {
+    db = new Database(DB_PATH) as ReturnType<typeof createDatabase>
+  } catch (error) {
+    console.warn(`dalil — Unable to inspect existing database for embedding backfill: ${String(error)}`)
+    return false
   }
 
-  process.stdout.write('\n')
+  try {
+    const { chunkCount, embeddingCount } = readBuildCounts(db)
+    const hasMissingEmbeddings = chunkCount > 0 && embeddingCount < chunkCount
+    if (!hasMissingEmbeddings) return false
+
+    const openAiApiKey = process.env.OPENAI_API_KEY?.trim()
+    if (!openAiApiKey) {
+      console.log(`dalil — Handbook database is up to date but embeddings are incomplete (${embeddingCount}/${chunkCount})`)
+      console.log('Set OPENAI_API_KEY and run `npm run build:handbook -- --force` to generate embeddings.')
+      return true
+    }
+
+    console.log(`dalil — Handbook database is up to date, backfilling embeddings (${embeddingCount}/${chunkCount})`)
+    try {
+      await maybeGenerateEmbeddings(db)
+    } catch (error) {
+      console.warn(`  Warning: failed to generate embeddings: ${String(error)}`)
+    }
+    printBuildSummary(db)
+    console.log('\n  Done!')
+    return true
+  } finally {
+    db.close()
+  }
 }
 
 /**
@@ -474,7 +549,10 @@ async function main() {
   const forceFlag = process.argv.includes('--force')
 
   if (!forceFlag && isDatabaseFresh()) {
-    console.log('dalil — Handbook database is up to date, skipping build')
+    const handled = await maybeBackfillEmbeddingsForFreshDatabase()
+    if (!handled) {
+      console.log('dalil — Handbook database is up to date, skipping build')
+    }
     return
   }
 
@@ -502,18 +580,7 @@ async function main() {
       console.warn(`  Warning: failed to generate embeddings: ${String(error)}`)
     }
 
-    const docCount = (db.prepare('SELECT count(*) as count FROM documents').get() as { count: number }).count
-    const chunkCount = (db.prepare('SELECT count(*) as count FROM chunks').get() as { count: number }).count
-    const embeddingCount = (db.prepare('SELECT count(*) as count FROM chunk_embeddings').get() as { count: number }).count
-    const tagCount = (db.prepare('SELECT count(*) as count FROM tags').get() as { count: number }).count
-    const navCount = (db.prepare('SELECT count(*) as count FROM navigation_tree').get() as { count: number }).count
-
-    console.log('\n  Summary:')
-    console.log(`  Documents: ${docCount}`)
-    console.log(`  Chunks: ${chunkCount}`)
-    console.log(`  Embeddings: ${embeddingCount}`)
-    console.log(`  Tags: ${tagCount}`)
-    console.log(`  Navigation nodes: ${navCount}`)
+    printBuildSummary(db)
     console.log('\n  Done!')
   } finally {
     db.close()

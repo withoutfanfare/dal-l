@@ -8,8 +8,10 @@
     "build": "vue-tsc --noEmit && vite build",
     "test": "node --test --import tsx src/**/*.test.ts",
     "preview": "vite preview",
-    "build:handbook": "tsx scripts/build-handbook.ts",
-    "tauri": "tauri"
+    "build:handbook": "node --import tsx scripts/build-handbook.ts",
+    "tauri": "tauri",
+    "tauri:build:dist": "tauri build --ci",
+    "release:mac": "bash scripts/release-macos.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",

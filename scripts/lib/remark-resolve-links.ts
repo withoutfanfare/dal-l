@@ -10,6 +10,32 @@ export interface ResolveLinksOptions {
 export default function remarkResolveLinks(options: ResolveLinksOptions) {
   const { collectionId, currentFilePath, slugMap } = options
   const currentDir = path.dirname(currentFilePath)
+  const lowerSlugMap = new Map<string, string>()
+  const orderedPaths = Array.from(slugMap.keys())
+
+  for (const filePath of orderedPaths) {
+    const lower = filePath.toLowerCase()
+    if (!lowerSlugMap.has(lower)) {
+      const slug = slugMap.get(filePath)
+      if (slug) lowerSlugMap.set(lower, slug)
+    }
+  }
+
+  function resolveReadmeFallback(resolvedPath: string): string | null {
+    const resolvedDirLower = path.dirname(resolvedPath).toLowerCase()
+
+    const sibling = orderedPaths
+      .filter((p) => path.dirname(p).toLowerCase() === resolvedDirLower && path.basename(p).toLowerCase() !== 'readme.md')
+      .sort((a, b) => a.localeCompare(b))[0]
+
+    if (sibling) return slugMap.get(sibling) ?? null
+
+    const firstInCollection = orderedPaths
+      .filter((p) => path.basename(p).toLowerCase() !== 'readme.md')
+      .sort((a, b) => a.localeCompare(b))[0]
+
+    return firstInCollection ? (slugMap.get(firstInCollection) ?? null) : null
+  }
 
   return (tree: any) => {
     visit(tree, 'link', (node, index, parent) => {
@@ -38,8 +64,20 @@ export default function remarkResolveLinks(options: ResolveLinksOptions) {
       // Resolve the relative .md path against the current file's directory
       const resolved = path.normalize(path.join(currentDir, pathname))
 
-      // Look up the resolved path in the slug map
-      const slug = slugMap.get(resolved)
+      const readmeTarget = path.basename(resolved).toLowerCase() === 'readme.md'
+
+      // README links are treated as section pointers and redirected to the first
+      // concrete page in the same section (or first page in collection).
+      let slug: string | undefined
+      if (readmeTarget) {
+        slug = resolveReadmeFallback(resolved) ?? undefined
+      } else {
+        // Look up the resolved path in the slug map (case-sensitive, then case-insensitive).
+        slug = slugMap.get(resolved)
+        if (!slug) {
+          slug = lowerSlugMap.get(resolved.toLowerCase())
+        }
+      }
 
       if (slug) {
         node.url = `/docs/${collectionId}/${slug}${suffix}`

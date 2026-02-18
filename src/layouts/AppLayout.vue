@@ -35,10 +35,13 @@ const { registerRouter: registerHistoryRouter } = useDocHistory()
 const { registerRouter: registerTabsRouter } = useDocTabs()
 const router = useRouter()
 const route = useRoute()
+const isHelpRoute = computed(() => route.name === 'help')
 
 const contentContainerClass = computed(() =>
   route.name === 'doc'
-    ? 'mx-auto max-w-6xl px-6 py-10 lg:px-8'
+    ? 'mx-auto max-w-[88rem] px-6 py-10 lg:px-8'
+    : route.name === 'help'
+      ? 'mx-auto max-w-5xl px-6 py-10 lg:px-8'
     : route.name === 'springboard'
       ? 'mx-auto max-w-5xl px-6 py-10 lg:px-8'
     : 'mx-auto max-w-3xl px-10 py-10',
@@ -106,6 +109,10 @@ onUnmounted(() => {
 function handleOpenSettings() {
   emit('open-settings')
 }
+
+function handleOpenHelp() {
+  router.push('/help')
+}
 </script>
 
 <template>
@@ -141,6 +148,16 @@ function handleOpenSettings() {
           <kbd class="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-border/50 bg-surface/50 text-[10px] font-medium text-text-secondary/70">
             <span class="text-[11px]">&#8984;</span>K
           </kbd>
+        </button>
+        <button
+          class="h-7 px-2.5 rounded-md text-xs font-medium transition-colors border"
+          :class="isHelpRoute
+            ? 'border-accent/35 bg-accent/10 text-accent'
+            : 'border-border/60 bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border'"
+          title="Help"
+          @click="handleOpenHelp"
+        >
+          Help
         </button>
         <template v-if="showAiPanel">
           <button

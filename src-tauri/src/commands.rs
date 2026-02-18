@@ -34,7 +34,9 @@ pub fn get_project_stats(
         .query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))
         .unwrap_or(0);
     let embedding_count: i32 = conn
-        .query_row("SELECT COUNT(*) FROM chunk_embeddings", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM chunk_embeddings", [], |row| {
+            row.get(0)
+        })
         .unwrap_or(0);
 
     // Determine DB file path for size calculation
@@ -100,6 +102,343 @@ fn unix_timestamp_i64() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or_default()
+}
+
+fn resolve_node_binary() -> Option<String> {
+    // Prefer PATH first, then common macOS install locations.
+    let candidates = [
+        "node",
+        "/opt/homebrew/bin/node",
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+    ];
+
+    for candidate in candidates {
+        let ok = std::process::Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false);
+        if ok {
+            return Some(candidate.to_string());
+        }
+    }
+
+    None
+}
+
+fn resolve_project_root(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let mut candidates = Vec::new();
+
+    if let Ok(cwd) = std::env::current_dir() {
+        // Dev mode: command is often run from repo root.
+        candidates.push(cwd.clone());
+
+        // Dev mode: command can also run from src-tauri/.
+        if cwd.ends_with("src-tauri") {
+            let mut parent = cwd.clone();
+            parent.pop();
+            candidates.push(parent);
+        }
+    }
+
+    // Build-time repo path (useful when packaged app still runs on build host).
+    if let Some(parent) = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.to_path_buf())
+    {
+        candidates.push(parent);
+    }
+
+    // Optional runtime resource fallback.
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.clone());
+        if let Some(parent) = resource_dir.parent() {
+            candidates.push(parent.to_path_buf());
+        }
+    }
+
+    for candidate in candidates {
+        if candidate.join("scripts/build-handbook.ts").exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Err("Could not locate project build scripts. Reinstall the app or run from a development checkout."
+        .to_string())
+}
+
+#[derive(Debug)]
+struct BuildCommandResult {
+    success: bool,
+    stderr: String,
+}
+
+fn normalise_build_error(stderr: &str) -> String {
+    let trimmed = stderr.trim();
+    if trimmed.is_empty() {
+        "Unknown build failure".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn is_better_sqlite3_abi_mismatch(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    (lower.contains("node_module_version") || lower.contains("err_dlopen_failed"))
+        && lower.contains("better_sqlite3")
+}
+
+async fn execute_project_build_command(
+    app: &AppHandle,
+    node_bin: &str,
+    project_root: &std::path::Path,
+    tsx_cli_path: &std::path::Path,
+    script_path: &std::path::Path,
+    source_path: &str,
+    db_path: &std::path::Path,
+    collection_id: &str,
+    collection_name: &str,
+    collection_icon: &str,
+    openai_api_key: Option<&str>,
+) -> Result<BuildCommandResult, String> {
+    let mut build_command = app
+        .shell()
+        .command(node_bin)
+        .args([
+            tsx_cli_path.to_str().ok_or("Invalid tsx CLI path")?,
+            script_path.to_str().ok_or("Invalid script path")?,
+            "--source",
+            source_path,
+            "--output",
+            db_path.to_str().ok_or("Invalid DB path")?,
+            "--collection-id",
+            collection_id,
+            "--collection-name",
+            collection_name,
+            "--collection-icon",
+            collection_icon,
+        ])
+        .current_dir(project_root);
+
+    if let Some(api_key) = openai_api_key.filter(|k| !k.trim().is_empty()) {
+        build_command = build_command.env("OPENAI_API_KEY", api_key);
+    }
+
+    let output = build_command
+        .output()
+        .await
+        .map_err(|e| format!("Failed to spawn build process: {}", e))?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    Ok(BuildCommandResult {
+        success: output.status.success(),
+        stderr,
+    })
+}
+
+fn resolve_npm_cli_with_node(node_bin: &str) -> Option<String> {
+    let script = "const r = require.resolve('npm/bin/npm-cli.js'); console.log(r);";
+    std::process::Command::new(node_bin)
+        .args(["-e", script])
+        .output()
+        .ok()
+        .and_then(|out| {
+            if !out.status.success() {
+                return None;
+            }
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if path.is_empty() {
+                None
+            } else {
+                Some(path)
+            }
+        })
+}
+
+fn build_node_path_env(node_bin: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    if let Some(parent) = std::path::Path::new(node_bin)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+    {
+        parts.push(parent);
+    }
+
+    for base in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
+        parts.push(base.to_string());
+    }
+
+    if let Ok(existing) = std::env::var("PATH") {
+        parts.push(existing);
+    }
+
+    parts.join(":")
+}
+
+async fn rebuild_better_sqlite3(
+    app: &AppHandle,
+    node_bin: &str,
+    project_root: &std::path::Path,
+) -> Result<(), String> {
+    let mut attempts: Vec<(String, Vec<String>)> = Vec::new();
+    let path_env = build_node_path_env(node_bin);
+
+    // Best option in packaged environments: run npm CLI through resolved Node.
+    if let Some(npm_cli) = resolve_npm_cli_with_node(node_bin) {
+        attempts.push((
+            node_bin.to_string(),
+            vec![npm_cli, "rebuild".to_string(), "better-sqlite3".to_string()],
+        ));
+    }
+
+    // Explicit npm CLI locations commonly used by Node installs.
+    for npm_cli in [
+        "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js",
+        "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
+        "/usr/lib/node_modules/npm/bin/npm-cli.js",
+    ] {
+        if std::path::Path::new(npm_cli).exists() {
+            attempts.push((
+                node_bin.to_string(),
+                vec![
+                    npm_cli.to_string(),
+                    "rebuild".to_string(),
+                    "better-sqlite3".to_string(),
+                ],
+            ));
+        }
+    }
+
+    // Fallback: sibling npm next to the node executable.
+    if let Some(parent) = std::path::Path::new(node_bin).parent() {
+        let sibling_npm = parent.join("npm");
+        attempts.push((
+            sibling_npm.to_string_lossy().to_string(),
+            vec!["rebuild".to_string(), "better-sqlite3".to_string()],
+        ));
+    }
+
+    // Last resort PATH/common locations.
+    for npm in [
+        "npm",
+        "/opt/homebrew/bin/npm",
+        "/usr/local/bin/npm",
+        "/usr/bin/npm",
+    ] {
+        attempts.push((
+            npm.to_string(),
+            vec!["rebuild".to_string(), "better-sqlite3".to_string()],
+        ));
+    }
+
+    let mut errors = Vec::new();
+    for (cmd, args) in attempts {
+        let output = app
+            .shell()
+            .command(&cmd)
+            .args(args.iter().map(String::as_str).collect::<Vec<_>>())
+            .env("PATH", &path_env)
+            .current_dir(project_root)
+            .output()
+            .await;
+
+        match output {
+            Ok(out) if out.status.success() => return Ok(()),
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                errors.push(format!(
+                    "attempt '{}': {}",
+                    cmd,
+                    normalise_build_error(&stderr)
+                ));
+            }
+            Err(e) => {
+                errors.push(format!("attempt '{}': {}", cmd, e));
+            }
+        }
+    }
+
+    Err(format!(
+        "Could not rebuild better-sqlite3 automatically. {}",
+        errors.join(" | ")
+    ))
+}
+
+async fn run_project_build(
+    app: &AppHandle,
+    stored_settings: &Settings,
+    source_path: &str,
+    db_path: &std::path::Path,
+    collection_id: &str,
+    collection_name: &str,
+    collection_icon: &str,
+) -> Result<(), String> {
+    let project_root = resolve_project_root(app)?;
+    let script_path = project_root.join("scripts/build-handbook.ts");
+    let tsx_cli_path = project_root.join("node_modules/tsx/dist/cli.mjs");
+    let node_bin = resolve_node_binary()
+        .ok_or("Node.js executable not found. Install Node.js (v20+) to enable project imports.")?;
+
+    if !tsx_cli_path.exists() {
+        return Err(
+            "Missing local tsx runtime at node_modules/tsx/dist/cli.mjs. Run `npm install` in the project checkout."
+                .to_string(),
+        );
+    }
+
+    let openai_api_key = stored_settings.openai_api_key.as_deref();
+    let first = execute_project_build_command(
+        app,
+        &node_bin,
+        &project_root,
+        &tsx_cli_path,
+        &script_path,
+        source_path,
+        db_path,
+        collection_id,
+        collection_name,
+        collection_icon,
+        openai_api_key,
+    )
+    .await?;
+
+    if first.success {
+        return Ok(());
+    }
+
+    if is_better_sqlite3_abi_mismatch(&first.stderr) {
+        rebuild_better_sqlite3(app, &node_bin, &project_root).await?;
+        let retry = execute_project_build_command(
+            app,
+            &node_bin,
+            &project_root,
+            &tsx_cli_path,
+            &script_path,
+            source_path,
+            db_path,
+            collection_id,
+            collection_name,
+            collection_icon,
+            openai_api_key,
+        )
+        .await?;
+
+        if retry.success {
+            return Ok(());
+        }
+
+        return Err(format!(
+            "Build failed after rebuilding better-sqlite3: {}",
+            normalise_build_error(&retry.stderr)
+        ));
+    }
+
+    Err(format!(
+        "Build failed: {}",
+        normalise_build_error(&first.stderr)
+    ))
 }
 
 fn bookmark_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Bookmark> {
@@ -1787,52 +2126,22 @@ pub async fn add_project(
         serde_json::json!({ "projectId": &id }),
     );
 
-    // Resolve project root (parent of src-tauri/)
-    let project_root = {
-        let mut path = std::env::current_dir().map_err(|e| e.to_string())?;
-        if path.ends_with("src-tauri") {
-            path.pop();
-        }
-        path
-    };
-    let script_path = project_root.join("scripts/build-handbook.ts");
-
-    // Spawn the build script using npx tsx
-    let mut build_command = app.shell().command("npx").args([
-        "tsx",
-        script_path.to_str().ok_or("Invalid script path")?,
-        "--source",
+    if let Err(build_err) = run_project_build(
+        &app,
+        &stored_settings,
         &source_path,
-        "--output",
-        db_path.to_str().ok_or("Invalid DB path")?,
-        "--collection-id",
+        &db_path,
         &id,
-        "--collection-name",
         &name,
-        "--collection-icon",
         &icon,
-    ]);
-
-    if let Some(api_key) = stored_settings
-        .openai_api_key
-        .as_ref()
-        .filter(|k| !k.trim().is_empty())
+    )
+    .await
     {
-        build_command = build_command.env("OPENAI_API_KEY", api_key);
-    }
-
-    let output = build_command
-        .output()
-        .await
-        .map_err(|e| format!("Failed to spawn build process: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         let _ = app.emit(
             "project-build-error",
-            serde_json::json!({ "projectId": &id, "error": stderr.to_string() }),
+            serde_json::json!({ "projectId": &id, "error": build_err.clone() }),
         );
-        return Err(format!("Build failed: {}", stderr));
+        return Err(build_err);
     }
 
     let _ = app.emit(
@@ -1914,51 +2223,22 @@ pub async fn rebuild_project(
         serde_json::json!({ "projectId": &project_id }),
     );
 
-    // Resolve project root (parent of src-tauri/)
-    let project_root = {
-        let mut path = std::env::current_dir().map_err(|e| e.to_string())?;
-        if path.ends_with("src-tauri") {
-            path.pop();
-        }
-        path
-    };
-    let script_path = project_root.join("scripts/build-handbook.ts");
-
-    let mut build_command = app.shell().command("npx").args([
-        "tsx",
-        script_path.to_str().ok_or("Invalid script path")?,
-        "--source",
+    if let Err(build_err) = run_project_build(
+        &app,
+        &stored_settings,
         &source_path,
-        "--output",
-        db_path.to_str().ok_or("Invalid DB path")?,
-        "--collection-id",
+        &db_path,
         &project_id,
-        "--collection-name",
         &name,
-        "--collection-icon",
         &icon,
-    ]);
-
-    if let Some(api_key) = stored_settings
-        .openai_api_key
-        .as_ref()
-        .filter(|k| !k.trim().is_empty())
+    )
+    .await
     {
-        build_command = build_command.env("OPENAI_API_KEY", api_key);
-    }
-
-    let output = build_command
-        .output()
-        .await
-        .map_err(|e| format!("Failed to spawn build process: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         let _ = app.emit(
             "project-build-error",
-            serde_json::json!({ "projectId": &project_id, "error": stderr.to_string() }),
+            serde_json::json!({ "projectId": &project_id, "error": build_err.clone() }),
         );
-        return Err(format!("Build failed: {}", stderr));
+        return Err(build_err);
     }
 
     // Build succeeded — close old connection and open new one in a single lock

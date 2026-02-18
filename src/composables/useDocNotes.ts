@@ -12,12 +12,15 @@ const note = ref<DocNote | null>(null)
 const highlights = ref<DocHighlight[]>([])
 const loading = ref(false)
 const saving = ref(false)
+let loadRequestId = 0
 
 export function useDocNotes() {
   async function load(projectId: string, docSlug: string) {
+    const thisRequest = ++loadRequestId
     if (!projectId || !docSlug) {
       note.value = null
       highlights.value = []
+      loading.value = false
       return
     }
     loading.value = true
@@ -26,10 +29,13 @@ export function useDocNotes() {
         getDocNote(projectId, docSlug),
         listDocHighlights(projectId, docSlug),
       ])
+      if (thisRequest !== loadRequestId) return
       note.value = nextNote
       highlights.value = nextHighlights
     } finally {
-      loading.value = false
+      if (thisRequest === loadRequestId) {
+        loading.value = false
+      }
     }
   }
 
