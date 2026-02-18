@@ -2,7 +2,7 @@ import { onMounted, onUnmounted } from 'vue'
 import type { Router } from 'vue-router'
 import { useSidebar } from './useSidebar'
 import { useTheme } from './useTheme'
-import { useAI } from './useAI'
+// HIDDEN: AI — import { useAI } from './useAI'
 import { useCollections } from './useCollections'
 import { useNavigation, type NavigationTree } from './useNavigation'
 import { registerKeydownHandler } from './useKeydownDispatcher'
@@ -30,7 +30,7 @@ function firstLeaf(nodes: NavigationTree[]): NavigationTree | null {
 export function useKeyboardShortcuts(router: Router) {
   const { toggleSidebar } = useSidebar()
   const { toggleTheme } = useTheme()
-  const { toggle: toggleAI, isConfigured } = useAI()
+  // HIDDEN: AI — const { toggle: toggleAI, isConfigured } = useAI()
   const { collections, setActiveCollection } = useCollections()
   const { loadNavigation, tree } = useNavigation()
 
@@ -63,15 +63,16 @@ export function useKeyboardShortcuts(router: Router) {
       description: 'Navigate forward',
       handler: () => router.forward(),
     },
-    {
-      key: 'A',
-      meta: true,
-      shift: true,
-      description: 'Toggle Ask AI panel',
-      handler: () => {
-        if (isConfigured.value) toggleAI()
-      },
-    },
+    // HIDDEN: AI
+    // {
+    //   key: 'A',
+    //   meta: true,
+    //   shift: true,
+    //   description: 'Toggle Ask AI panel',
+    //   handler: () => {
+    //     if (isConfigured.value) toggleAI()
+    //   },
+    // },
   ]
 
   let unregister: (() => void) | null = null
