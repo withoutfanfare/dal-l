@@ -2,11 +2,16 @@
 import { useCollections } from '@/composables/useCollections'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import { useRouter } from 'vue-router'
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
+import { useProjects } from '@/composables/useProjects'
+import { useDocActivity } from '@/composables/useDocActivity'
+import { docSlugWithoutCollection } from '@/lib/deepLinks'
 
 const { collections } = useCollections()
 const { open: openSearch } = useCommandPalette()
 const router = useRouter()
+const { activeProjectId } = useProjects()
+const { recentDocuments, updatedDocuments, load: loadDocActivity } = useDocActivity()
 
 onMounted(() => {
   document.title = 'dal\u012Bl'
@@ -18,10 +23,28 @@ function openCollection(collectionId: string) {
   // Navigate to the collection root so the sidebar expands with its content
   router.push(`/${collectionId}`)
 }
+
+function openDoc(collectionId: string, docSlug: string) {
+  router.push({
+    name: 'doc',
+    params: {
+      collection: collectionId,
+      slug: docSlugWithoutCollection(collectionId, docSlug),
+    },
+  })
+}
+
+watch(
+  () => activeProjectId.value,
+  (projectId) => {
+    if (projectId) loadDocActivity(projectId).catch(() => {})
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center min-h-[60vh]">
+  <div class="flex flex-col items-center min-h-[60vh] pt-8">
     <div class="mb-10 text-center">
       <h1 class="text-2xl font-semibold text-text-primary tracking-tight mb-1">
         dal&#x012B;l
@@ -44,6 +67,43 @@ function openCollection(collectionId: string) {
         <span class="text-xs">&#8984;</span>K
       </kbd>
     </button>
+
+    <!-- Continue reading -->
+    <section v-if="recentDocuments.length > 0" class="w-full max-w-xl mb-6">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Continue Reading</h2>
+      <div class="space-y-2">
+        <button
+          v-for="item in recentDocuments.slice(0, 4)"
+          :key="item.docSlug"
+          class="w-full rounded-lg border border-border bg-surface p-3 text-left hover:bg-surface-secondary/70 transition-colors"
+          @click="openDoc(item.collectionId, item.docSlug)"
+        >
+          <p class="text-sm font-medium text-text-primary truncate">{{ item.title }}</p>
+          <p class="text-xs text-text-secondary truncate mt-0.5">{{ item.section || item.collectionId }}</p>
+        </button>
+      </div>
+    </section>
+
+    <!-- Recently updated -->
+    <section v-if="updatedDocuments.length > 0" class="w-full max-w-xl mb-8">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Recently Updated</h2>
+      <div class="space-y-2">
+        <button
+          v-for="item in updatedDocuments.slice(0, 4)"
+          :key="item.docSlug"
+          class="w-full rounded-lg border border-accent/20 bg-accent/5 p-3 text-left hover:bg-accent/10 transition-colors"
+          @click="openDoc(item.collectionId, item.docSlug)"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-sm font-medium text-text-primary truncate">{{ item.title }}</p>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent flex-shrink-0">
+              Updated
+            </span>
+          </div>
+          <p class="text-xs text-text-secondary truncate mt-0.5">{{ item.section || item.collectionId }}</p>
+        </button>
+      </div>
+    </section>
 
     <!-- Collections -->
     <div

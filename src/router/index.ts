@@ -14,6 +14,21 @@ const router = createRouter({
       component: () => import('@/pages/TagPage.vue'),
     },
     {
+      path: '/projects',
+      name: 'projects',
+      component: () => import('@/pages/ProjectsPage.vue'),
+    },
+    {
+      path: '/bookmarks/:collection?',
+      name: 'bookmarks',
+      component: () => import('@/pages/BookmarksPage.vue'),
+    },
+    {
+      path: '/springboard/:collection?',
+      name: 'springboard',
+      component: () => import('@/pages/TabSpringboardPage.vue'),
+    },
+    {
       path: '/:collection/:slug(.*)',
       name: 'doc',
       component: () => import('@/pages/DocPage.vue'),

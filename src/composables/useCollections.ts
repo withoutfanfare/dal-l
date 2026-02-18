@@ -26,6 +26,8 @@ export function useCollections() {
 
   async function reload() {
     loaded.value = false
+    activeCollectionId.value = ''
+    collections.value = []
     await loadCollections()
   }
 

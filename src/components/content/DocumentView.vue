@@ -5,13 +5,18 @@ import { open } from '@tauri-apps/plugin-shell'
 import type { Document } from '@/lib/types'
 import { sanitiseHtml } from '@/lib/sanitise'
 import { useToast } from '@/composables/useToast'
+import { useProjects } from '@/composables/useProjects'
+import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
 import ImageLightbox from './ImageLightbox.vue'
 
 const props = defineProps<{
   document: Document
+  compareMode?: boolean
+  changedHeadingIds?: string[]
 }>()
 
 const { addToast } = useToast()
+const { activeProjectId } = useProjects()
 
 // Lightbox state
 const lightboxSrc = ref('')
@@ -53,6 +58,7 @@ watch(
     await nextTick()
     injectHeadingAnchors()
     injectCopyButtons()
+    applyCompareHighlights()
     if (contentRef.value) {
       contentRef.value.setAttribute('data-enter', '')
       contentRef.value.addEventListener('animationend', () => {
@@ -78,6 +84,7 @@ function injectCopyButtons() {
   preBlocks.forEach((pre) => {
     if (pre.querySelector('.code-copy-btn')) return
     const btn = document.createElement('button')
+    btn.setAttribute('type', 'button')
     btn.className = 'code-copy-btn'
     btn.setAttribute('aria-label', 'Copy code')
     btn.setAttribute('title', 'Copy code')
@@ -92,6 +99,22 @@ function injectCopyButtons() {
     })
     pre.appendChild(btn)
   })
+}
+
+async function copySectionLink(anchorId: string) {
+  if (!activeProjectId.value) return
+  const deeplink = buildDeepLink({
+    projectId: activeProjectId.value,
+    collectionId: props.document.collection_id,
+    docSlug: docSlugWithoutCollection(props.document.collection_id, props.document.slug),
+    anchorId,
+  })
+  try {
+    await navigator.clipboard.writeText(deeplink)
+    addToast('Section link copied', 'success')
+  } catch {
+    addToast('Could not copy section link', 'error')
+  }
 }
 
 function handleClick(event: MouseEvent) {
@@ -113,16 +136,9 @@ function handleClick(event: MouseEvent) {
   if (headingAnchor) {
     event.preventDefault()
     event.stopPropagation()
-    const heading = headingAnchor.closest('h2, h3')
-    if (heading?.id) {
-      const deeplink = `dalil://${router.currentRoute.value.path.replace(/^\//, '')}#${heading.id}`
-      try {
-        navigator.clipboard.writeText(deeplink).then(() => {
-          addToast('Link copied to clipboard', 'success')
-        }).catch(() => { /* clipboard not available */ })
-      } catch {
-        /* clipboard API not supported */
-      }
+    const anchorId = headingAnchor.getAttribute('data-anchor-id')
+    if (anchorId) {
+      copySectionLink(anchorId).catch(() => {})
     }
     return
   }
@@ -164,21 +180,43 @@ function injectHeadingAnchors() {
   const headings = contentRef.value.querySelectorAll('h2[id], h3[id]')
   headings.forEach((heading) => {
     if (heading.querySelector('.heading-anchor')) return
-    const btn = document.createElement('span')
+    const btn = document.createElement('button')
+    btn.setAttribute('type', 'button')
     btn.className = 'heading-anchor'
-    btn.setAttribute('role', 'button')
-    btn.setAttribute('tabindex', '0')
+    btn.setAttribute('data-anchor-id', heading.id)
     btn.setAttribute('aria-label', 'Copy link to section')
+    btn.setAttribute('title', 'Copy section link')
     btn.innerHTML = anchorSvg
     heading.appendChild(btn)
   })
 }
+
+function applyCompareHighlights() {
+  if (!contentRef.value) return
+  const headings = contentRef.value.querySelectorAll('h2[id], h3[id]')
+  const changedIds = new Set(props.changedHeadingIds ?? [])
+  headings.forEach((heading) => {
+    heading.classList.remove('heading-compare-changed')
+    if (props.compareMode && changedIds.has((heading as HTMLElement).id)) {
+      heading.classList.add('heading-compare-changed')
+    }
+  })
+}
+
+watch(
+  () => [props.compareMode, props.changedHeadingIds?.join('|')],
+  async () => {
+    await nextTick()
+    applyCompareHighlights()
+  },
+)
 
 onMounted(async () => {
   contentRef.value?.addEventListener('click', handleClick)
   await nextTick()
   injectHeadingAnchors()
   injectCopyButtons()
+  applyCompareHighlights()
   if (contentRef.value) {
     contentRef.value.setAttribute('data-enter', '')
     contentRef.value.addEventListener('animationend', () => {
@@ -197,6 +235,7 @@ onBeforeUnmount(() => {
     ref="contentRef"
     class="prose prose-neutral max-w-none prose-img-lightbox
            prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-text-primary
+           prose-h1:text-[1.95rem] prose-h1:leading-tight prose-h1:mt-8 prose-h1:mb-4 sm:prose-h1:text-[2.15rem]
            prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-3 prose-h2:pb-2 prose-h2:border-b prose-h2:border-border
            prose-h3:text-base prose-h3:mt-7 prose-h3:mb-2
            prose-h4:text-sm prose-h4:mt-5 prose-h4:mb-1.5 prose-h4:uppercase prose-h4:tracking-wide prose-h4:text-text-secondary
