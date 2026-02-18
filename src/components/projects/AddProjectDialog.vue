@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useProjects } from '@/composables/useProjects'
 
 const emit = defineEmits<{
@@ -7,6 +8,7 @@ const emit = defineEmits<{
 }>()
 
 const { addProject } = useProjects()
+const router = useRouter()
 
 const name = ref('')
 const icon = ref('\u{1F4C1}')
@@ -37,6 +39,7 @@ async function handleSubmit() {
 
   try {
     await addProject(name.value.trim(), icon.value || '\u{1F4C1}', sourcePath.value)
+    router.push('/')
     emit('close')
   } catch (e: any) {
     error.value = e?.message || String(e)

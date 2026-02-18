@@ -456,13 +456,23 @@ pub async fn add_project(
     // Emit build started event
     let _ = app.emit("project-build-started", serde_json::json!({ "projectId": &id }));
 
+    // Resolve project root (parent of src-tauri/)
+    let project_root = {
+        let mut path = std::env::current_dir().map_err(|e| e.to_string())?;
+        if path.ends_with("src-tauri") {
+            path.pop();
+        }
+        path
+    };
+    let script_path = project_root.join("scripts/build-handbook.ts");
+
     // Spawn the build script using npx tsx
     let output = app
         .shell()
         .command("npx")
         .args([
             "tsx",
-            "scripts/build-handbook.ts",
+            script_path.to_str().ok_or("Invalid script path")?,
             "--source",
             &source_path,
             "--output",
@@ -549,12 +559,22 @@ pub async fn rebuild_project(
 
     let _ = app.emit("project-build-started", serde_json::json!({ "projectId": &project_id }));
 
+    // Resolve project root (parent of src-tauri/)
+    let project_root = {
+        let mut path = std::env::current_dir().map_err(|e| e.to_string())?;
+        if path.ends_with("src-tauri") {
+            path.pop();
+        }
+        path
+    };
+    let script_path = project_root.join("scripts/build-handbook.ts");
+
     let output = app
         .shell()
         .command("npx")
         .args([
             "tsx",
-            "scripts/build-handbook.ts",
+            script_path.to_str().ok_or("Invalid script path")?,
             "--source",
             &source_path,
             "--output",

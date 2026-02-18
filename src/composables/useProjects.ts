@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { listProjects, getActiveProjectId, setActiveProject as setActiveProjectApi, addProject as addProjectApi, rebuildProject as rebuildProjectApi, removeProject as removeProjectApi } from '@/lib/api'
 import { useCollections } from './useCollections'
+import { useNavigation } from './useNavigation'
 import type { Project, BuildStatus } from '@/lib/types'
 
 const projects = ref<Project[]>([])
@@ -25,6 +26,10 @@ export function useProjects() {
     await setActiveProjectApi(id)
     activeProjectId.value = id
 
+    // Clear navigation cache so stale entries from the previous project aren't served
+    const { clearCache } = useNavigation()
+    clearCache()
+
     // Reload collections for the new project
     const { reload } = useCollections()
     await reload()
@@ -36,6 +41,9 @@ export function useProjects() {
       const project = await addProjectApi(name, icon, sourcePath)
       projects.value.push(project)
       buildStatus.value.set(project.id, 'complete')
+
+      // Auto-select the new project
+      await switchProject(project.id)
     } catch (e) {
       buildStatus.value.set(name, 'error')
       throw e
