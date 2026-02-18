@@ -2,6 +2,7 @@
 import Sidebar from '@/components/sidebar/Sidebar.vue'
 import { useSidebar } from '@/composables/useSidebar'
 import { useCollections } from '@/composables/useCollections'
+import { useProjects } from '@/composables/useProjects'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useScrollMemory } from '@/composables/useScrollMemory'
 import { useLastVisited } from '@/composables/useLastVisited'
@@ -18,6 +19,7 @@ import { useRouter } from 'vue-router'
 
 const { collapsed, sidebarWidth, toggleSidebar, setSidebarWidth, saveSidebarWidth } = useSidebar()
 const { loadCollections } = useCollections()
+const { loadProjects } = useProjects()
 // HIDDEN: AI — const { toggle: toggleAI } = useAI()
 // HIDDEN: AI — const { isConfigured } = useSettings()
 const { open: openSearch } = useCommandPalette()
@@ -66,6 +68,7 @@ function onVisibilityChange() {
 }
 
 onMounted(() => {
+  loadProjects()
   loadCollections()
   restoreIfHome()
   document.addEventListener('visibilitychange', onVisibilityChange)

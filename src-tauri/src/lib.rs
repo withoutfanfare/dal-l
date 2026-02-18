@@ -2,9 +2,11 @@ mod ai;
 mod commands;
 mod db;
 mod models;
+mod projects;
 mod settings;
 
-use db::{init_db, DbState, HttpClient};
+use db::{init_db, HttpClient};
+use projects::{load_registry, ProjectManager};
 use tauri::Manager;
 
 #[cfg(target_os = "macos")]
@@ -32,12 +34,17 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             set_dock_icon();
 
-            let conn = init_db(app.handle());
-            app.manage(DbState(std::sync::Mutex::new(conn)));
+            // ProjectManager: manages multiple project DB connections
+            let registry = load_registry(app.handle()).unwrap_or_default();
+            let mut manager = ProjectManager::new(registry);
+            let handbook_conn = init_db(app.handle());
+            manager.connections.insert("engineering-handbook".to_string(), handbook_conn);
+            app.manage(std::sync::Mutex::new(manager));
 
             let http_client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
@@ -60,6 +67,12 @@ pub fn run() {
             commands::test_provider,
             commands::ask_question,
             commands::get_embedding,
+            commands::list_projects,
+            commands::get_active_project_id,
+            commands::set_active_project,
+            commands::add_project,
+            commands::rebuild_project,
+            commands::remove_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,14 +1,26 @@
 use crate::ai;
-use crate::db::{DbState, HttpClient};
+use crate::db::HttpClient;
 use crate::models::*;
+use crate::projects::ProjectManager;
 use crate::settings;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_shell::ShellExt;
+
+fn unix_timestamp() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default()
+}
 
 // Note: Mutex poisoning is mitigated by panic = "abort" in release profile.
 // rusqlite::Connection is not Sync, so Mutex is required over RwLock.
 #[tauri::command]
-pub fn get_collections(db: State<DbState>) -> Result<Vec<Collection>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn get_collections(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+) -> Result<Vec<Collection>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
     let mut stmt = conn
         .prepare_cached(
             "SELECT id, name, icon, description, sort_order FROM collections ORDER BY sort_order",
@@ -32,10 +44,11 @@ pub fn get_collections(db: State<DbState>) -> Result<Vec<Collection>, String> {
 
 #[tauri::command]
 pub fn get_navigation(
-    db: State<DbState>,
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
     collection_id: String,
 ) -> Result<Vec<NavigationNode>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
     let mut stmt = conn
         .prepare_cached(
             "SELECT id, collection_id, slug, parent_slug, title, sort_order, level, has_children \
@@ -65,8 +78,12 @@ pub fn get_navigation(
 }
 
 #[tauri::command]
-pub fn get_document(db: State<DbState>, slug: String) -> Result<Document, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn get_document(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    slug: String,
+) -> Result<Document, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
     conn.query_row(
         "SELECT id, collection_id, slug, title, section, sort_order, parent_slug, \
          content_html, path, last_modified \
@@ -92,12 +109,13 @@ pub fn get_document(db: State<DbState>, slug: String) -> Result<Document, String
 
 #[tauri::command]
 pub fn search_documents(
-    db: State<DbState>,
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
     query: String,
     collection_id: Option<String>,
     limit: Option<i32>,
 ) -> Result<Vec<SearchResult>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
     let limit = limit.unwrap_or(20);
 
     let sanitised_query = ai::sanitise_fts5_query(&query);
@@ -162,10 +180,11 @@ pub fn search_documents(
 
 #[tauri::command]
 pub fn get_tags(
-    db: State<DbState>,
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
     collection_id: Option<String>,
 ) -> Result<Vec<Tag>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
 
     let results = if let Some(ref cid) = collection_id {
         let mut stmt = conn
@@ -216,8 +235,12 @@ pub fn get_tags(
 }
 
 #[tauri::command]
-pub fn get_documents_by_tag(db: State<DbState>, tag: String) -> Result<Vec<SearchResult>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn get_documents_by_tag(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    tag: String,
+) -> Result<Vec<SearchResult>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
     let mut stmt = conn
         .prepare_cached(
             "SELECT d.slug, d.title, d.section, d.collection_id, '' as snippet \
@@ -246,11 +269,12 @@ pub fn get_documents_by_tag(db: State<DbState>, tag: String) -> Result<Vec<Searc
 
 #[tauri::command]
 pub fn get_similar_chunks(
-    db: State<DbState>,
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
     query_embedding: Vec<f32>,
     limit: Option<usize>,
 ) -> Result<Vec<ScoredChunk>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
     let limit = limit.unwrap_or(10);
     ai::vector_search(&conn, &query_embedding, limit)
 }
@@ -376,4 +400,239 @@ pub async fn get_embedding(
     });
 
     ai::generate_embedding(&http_client.0, &stored, &provider, &text).await
+}
+
+#[tauri::command]
+pub fn list_projects(
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+) -> Result<Vec<crate::projects::Project>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    Ok(mgr.registry.projects.clone())
+}
+
+#[tauri::command]
+pub fn get_active_project_id(
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+) -> Result<String, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    Ok(mgr.registry.active_project_id.clone())
+}
+
+#[tauri::command]
+pub fn set_active_project(
+    app: AppHandle,
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+    project_id: String,
+) -> Result<(), String> {
+    let mut mgr = manager.lock().map_err(|e| e.to_string())?;
+    mgr.set_active_project(&project_id)?;
+    crate::projects::save_registry(&app, &mgr.registry)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_project(
+    app: AppHandle,
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+    name: String,
+    icon: String,
+    source_path: String,
+) -> Result<crate::projects::Project, String> {
+    // Generate a slug ID from the name
+    let id = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    // Determine output DB path in app data directory
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let projects_dir = app_data_dir.join("projects");
+    std::fs::create_dir_all(&projects_dir).map_err(|e| e.to_string())?;
+    let db_path = projects_dir.join(format!("{}.db", id));
+
+    // Emit build started event
+    let _ = app.emit("project-build-started", serde_json::json!({ "projectId": &id }));
+
+    // Spawn the build script using npx tsx
+    let output = app
+        .shell()
+        .command("npx")
+        .args([
+            "tsx",
+            "scripts/build-handbook.ts",
+            "--source",
+            &source_path,
+            "--output",
+            db_path.to_str().ok_or("Invalid DB path")?,
+            "--collection-id",
+            &id,
+            "--collection-name",
+            &name,
+            "--collection-icon",
+            &icon,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to spawn build process: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let _ = app.emit(
+            "project-build-error",
+            serde_json::json!({ "projectId": &id, "error": stderr.to_string() }),
+        );
+        return Err(format!("Build failed: {}", stderr));
+    }
+
+    let _ = app.emit("project-build-complete", serde_json::json!({ "projectId": &id }));
+
+    // Create the project entry
+    let project = crate::projects::Project {
+        id: id.clone(),
+        name: name.clone(),
+        icon,
+        built_in: false,
+        source_path: Some(source_path),
+        db_path: Some(format!("projects/{}.db", id)),
+        last_built: Some(unix_timestamp()),
+        collections: vec![],
+    };
+
+    // Register in ProjectManager
+    let mut mgr = manager.lock().map_err(|e| e.to_string())?;
+    mgr.open_connection(&id, &db_path)?;
+    mgr.add_project(project.clone());
+    crate::projects::save_registry(&app, &mgr.registry)?;
+
+    Ok(project)
+}
+
+#[tauri::command]
+pub async fn rebuild_project(
+    app: AppHandle,
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+    project_id: String,
+) -> Result<(), String> {
+    // Get project details
+    let (source_path, db_relative_path, name, icon) = {
+        let mgr = manager.lock().map_err(|e| e.to_string())?;
+        let project = mgr
+            .registry
+            .projects
+            .iter()
+            .find(|p| p.id == project_id)
+            .ok_or_else(|| format!("Project '{}' not found", project_id))?;
+
+        if project.built_in {
+            return Err("Cannot rebuild built-in project".to_string());
+        }
+
+        (
+            project.source_path.clone().ok_or("No source path for project")?,
+            project.db_path.clone().ok_or("No database path for project")?,
+            project.name.clone(),
+            project.icon.clone(),
+        )
+    };
+
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let db_path = app_data_dir.join(&db_relative_path);
+
+    // Close existing connection before rebuild
+    {
+        let mut mgr = manager.lock().map_err(|e| e.to_string())?;
+        mgr.close_connection(&project_id);
+    }
+
+    let _ = app.emit("project-build-started", serde_json::json!({ "projectId": &project_id }));
+
+    let output = app
+        .shell()
+        .command("npx")
+        .args([
+            "tsx",
+            "scripts/build-handbook.ts",
+            "--source",
+            &source_path,
+            "--output",
+            db_path.to_str().ok_or("Invalid DB path")?,
+            "--collection-id",
+            &project_id,
+            "--collection-name",
+            &name,
+            "--collection-icon",
+            &icon,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to spawn build process: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let _ = app.emit(
+            "project-build-error",
+            serde_json::json!({ "projectId": &project_id, "error": stderr.to_string() }),
+        );
+        return Err(format!("Build failed: {}", stderr));
+    }
+
+    // Reopen connection
+    {
+        let mut mgr = manager.lock().map_err(|e| e.to_string())?;
+        mgr.open_connection(&project_id, &db_path)?;
+
+        // Update last_built timestamp
+        if let Some(project) = mgr.registry.projects.iter_mut().find(|p| p.id == project_id) {
+            project.last_built = Some(unix_timestamp());
+        }
+        crate::projects::save_registry(&app, &mgr.registry)?;
+    }
+
+    let _ = app.emit("project-build-complete", serde_json::json!({ "projectId": &project_id }));
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_project(
+    app: AppHandle,
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+    project_id: String,
+) -> Result<(), String> {
+    let db_relative_path = {
+        let mgr = manager.lock().map_err(|e| e.to_string())?;
+        let project = mgr
+            .registry
+            .projects
+            .iter()
+            .find(|p| p.id == project_id)
+            .ok_or_else(|| format!("Project '{}' not found", project_id))?;
+
+        if project.built_in {
+            return Err("Cannot remove built-in project".to_string());
+        }
+
+        project.db_path.clone()
+    };
+
+    // Remove from manager (closes connection, removes from registry)
+    {
+        let mut mgr = manager.lock().map_err(|e| e.to_string())?;
+        mgr.remove_project(&project_id)?;
+        crate::projects::save_registry(&app, &mgr.registry)?;
+    }
+
+    // Delete the database file
+    if let Some(relative_path) = db_relative_path {
+        let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        let db_path = app_data_dir.join(&relative_path);
+        if db_path.exists() {
+            std::fs::remove_file(&db_path).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
 }

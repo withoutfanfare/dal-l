@@ -1,4 +1,4 @@
-use crate::db::DbState;
+use crate::projects::ProjectManager;
 use crate::models::{AiProvider, ScoredChunk, Settings};
 use rusqlite::params;
 use serde::Deserialize;
@@ -834,8 +834,9 @@ pub async fn ask_question_rag(
 
     // Step 2: Search for relevant chunks
     let chunks = {
-        let db_state = app.state::<DbState>();
-        let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+        let manager = app.state::<Mutex<ProjectManager>>();
+        let mgr = manager.lock().map_err(|e| e.to_string())?;
+        let conn = mgr.active_connection()?;
 
         match query_embedding {
             Ok(ref embedding) => hybrid_search(&conn, embedding, &question, 8)?,

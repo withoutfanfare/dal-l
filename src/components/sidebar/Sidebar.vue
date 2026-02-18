@@ -1,18 +1,30 @@
 <script setup lang="ts">
+import ProjectSwitcher from './ProjectSwitcher.vue'
 import CollectionSwitcher from './CollectionSwitcher.vue'
 import SidebarSection from './SidebarSection.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import { useSidebar } from '@/composables/useSidebar'
 import { useNavigation } from '@/composables/useNavigation'
+import { useCollections } from '@/composables/useCollections'
+
+defineEmits<{
+  'add-project': []
+}>()
 
 const { toggleSidebar } = useSidebar()
 const { tree, loading } = useNavigation()
+const { collections } = useCollections()
 </script>
 
 <template>
   <aside class="h-full bg-sidebar/80 backdrop-blur-sm border-r border-border flex flex-col pt-[52px] overflow-hidden">
-    <!-- Collection switcher -->
+    <!-- Project switcher -->
     <div class="px-3 pt-2 pb-1" style="-webkit-app-region: no-drag">
+      <ProjectSwitcher @add-project="$emit('add-project')" />
+    </div>
+
+    <!-- Collection switcher (only when project has multiple collections) -->
+    <div v-if="collections.length > 1" class="px-3 pb-1" style="-webkit-app-region: no-drag">
       <CollectionSwitcher />
     </div>
 

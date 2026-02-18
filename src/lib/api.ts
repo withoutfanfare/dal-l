@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Collection, NavigationNode, Document, SearchResult, Tag, Chunk, Settings, AiProvider } from './types'
+import type { Collection, NavigationNode, Document, SearchResult, Tag, Chunk, Settings, AiProvider, Project } from './types'
 
 export async function getCollections(): Promise<Collection[]> {
   return invoke('get_collections')
@@ -50,4 +50,28 @@ export async function testProvider(provider: AiProvider): Promise<string> {
 
 export async function askQuestion(question: string, provider?: AiProvider): Promise<void> {
   return invoke('ask_question', { question, provider })
+}
+
+export async function listProjects(): Promise<Project[]> {
+  return invoke('list_projects')
+}
+
+export async function getActiveProjectId(): Promise<string> {
+  return invoke('get_active_project_id')
+}
+
+export async function setActiveProject(projectId: string): Promise<void> {
+  return invoke('set_active_project', { projectId })
+}
+
+export async function addProject(name: string, icon: string, sourcePath: string): Promise<Project> {
+  return invoke('add_project', { name, icon, sourcePath })
+}
+
+export async function rebuildProject(projectId: string): Promise<void> {
+  return invoke('rebuild_project', { projectId })
+}
+
+export async function removeProject(projectId: string): Promise<void> {
+  return invoke('remove_project', { projectId })
 }

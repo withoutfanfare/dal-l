@@ -51,6 +51,33 @@ export interface Chunk {
   heading_context: string
 }
 
+export interface ProjectCollection {
+  id: string
+  name: string
+  icon: string
+  sourceSubpath: string
+}
+
+export interface Project {
+  id: string
+  name: string
+  icon: string
+  builtIn: boolean
+  sourcePath?: string
+  dbPath?: string
+  lastBuilt?: string
+  collections: ProjectCollection[]
+}
+
+export type BuildStatus = 'idle' | 'building' | 'complete' | 'error'
+
+export interface ProjectBuildEvent {
+  projectId: string
+  status: BuildStatus
+  message?: string
+  error?: string
+}
+
 export type AiProvider = 'openai' | 'anthropic' | 'ollama'
 
 export interface Settings {

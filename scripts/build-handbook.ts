@@ -298,10 +298,80 @@ function isDatabaseFresh(): boolean {
   return true
 }
 
+/** Parse CLI arguments for sidecar mode. Returns null if not in CLI mode. */
+function parseCliArgs(): { source: string; output: string; collectionId: string; collectionName: string; collectionIcon: string } | null {
+  const args = process.argv.slice(2)
+  const sourceIdx = args.indexOf('--source')
+  if (sourceIdx === -1) return null
+
+  const get = (flag: string): string | undefined => {
+    const idx = args.indexOf(flag)
+    return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : undefined
+  }
+
+  const source = get('--source')
+  const output = get('--output')
+  const collectionId = get('--collection-id')
+  const collectionName = get('--collection-name')
+  const collectionIcon = get('--collection-icon') ?? 'document'
+
+  if (!source || !output || !collectionId || !collectionName) {
+    console.error('CLI mode requires: --source, --output, --collection-id, --collection-name')
+    process.exit(1)
+  }
+
+  return { source, output, collectionId, collectionName, collectionIcon }
+}
+
 async function main() {
+  const cliArgs = parseCliArgs()
+
+  if (cliArgs) {
+    // CLI/sidecar mode: build a single collection from CLI arguments
+    console.log('dalil — Building project database (CLI mode)\n')
+    console.log(`Source: ${cliArgs.source}`)
+    console.log(`Database: ${cliArgs.output}`)
+
+    const collection: Collection = {
+      id: cliArgs.collectionId,
+      name: cliArgs.collectionName,
+      icon: cliArgs.collectionIcon,
+      source: cliArgs.source,
+    }
+
+    const db = createDatabase(cliArgs.output)
+
+    try {
+      db.exec('BEGIN')
+      try {
+        await processCollection(collection, 0, db)
+        db.exec('COMMIT')
+      } catch (err) {
+        db.exec('ROLLBACK')
+        throw err
+      }
+
+      const docCount = (db.prepare('SELECT count(*) as count FROM documents').get() as { count: number }).count
+      const chunkCount = (db.prepare('SELECT count(*) as count FROM chunks').get() as { count: number }).count
+      const tagCount = (db.prepare('SELECT count(*) as count FROM tags').get() as { count: number }).count
+      const navCount = (db.prepare('SELECT count(*) as count FROM navigation_tree').get() as { count: number }).count
+
+      console.log('\n  Summary:')
+      console.log(`  Documents: ${docCount}`)
+      console.log(`  Chunks: ${chunkCount}`)
+      console.log(`  Tags: ${tagCount}`)
+      console.log(`  Navigation nodes: ${navCount}`)
+      console.log('\n  Done!')
+    } finally {
+      db.close()
+    }
+
+    return
+  }
+
+  // Config mode: existing behaviour using dalil.config.ts
   const forceFlag = process.argv.includes('--force')
 
-  // Staleness check: skip build if database is up to date
   if (!forceFlag && isDatabaseFresh()) {
     console.log('dalil — Handbook database is up to date, skipping build')
     return
@@ -314,10 +384,6 @@ async function main() {
   const db = createDatabase(DB_PATH)
 
   try {
-    // Process all collections: markdown processing is parallel,
-    // DB inserts are wrapped in a single outer transaction for performance.
-    // better-sqlite3 transactions are synchronous, so we use manual BEGIN/COMMIT
-    // to wrap async operations (the parallel markdown processing phase).
     db.exec('BEGIN')
     try {
       for (let i = 0; i < config.collections.length; i++) {
