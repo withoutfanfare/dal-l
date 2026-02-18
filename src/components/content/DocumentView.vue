@@ -235,6 +235,7 @@ onBeforeUnmount(() => {
     ref="contentRef"
     class="prose prose-neutral max-w-none prose-img-lightbox
            prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-text-primary
+           prose-h1:text-[1.95rem] prose-h1:leading-tight prose-h1:mt-8 prose-h1:mb-4 sm:prose-h1:text-[2.15rem]
            prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-3 prose-h2:pb-2 prose-h2:border-b prose-h2:border-border
            prose-h3:text-base prose-h3:mt-7 prose-h3:mb-2
            prose-h4:text-sm prose-h4:mt-5 prose-h4:mb-1.5 prose-h4:uppercase prose-h4:tracking-wide prose-h4:text-text-secondary

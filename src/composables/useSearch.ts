@@ -4,6 +4,12 @@ import type { SearchResult } from '@/lib/types'
 import { useBookmarks } from './useBookmarks'
 import { useDocActivity } from './useDocActivity'
 import { useCollections } from './useCollections'
+import {
+  loadSearchUsage,
+  saveSearchUsage,
+  sortSearchResults,
+  updateSearchUsage,
+} from '@/lib/searchRanking'
 
 const query = ref('')
 const results = ref<SearchResult[]>([])
@@ -16,6 +22,7 @@ let requestId = 0
 const { byDocSlug } = useBookmarks()
 const { recentDocuments, updatedSlugs } = useDocActivity()
 const { activeCollectionId } = useCollections()
+const usageBySlug = ref(loadSearchUsage())
 
 function formatQuery(raw: string): string {
   const trimmed = raw.trim()
@@ -40,46 +47,9 @@ function clearSearch() {
   }
 }
 
-function normalisedSlugTail(slug: string): string {
-  return (slug.split('/').filter(Boolean).pop() ?? slug)
-    .replace(/[-_]+/g, ' ')
-    .toLowerCase()
-}
-
-function relevanceScore(result: SearchResult, queryLower: string, baselineIndex: number): number {
-  let score = -baselineIndex
-
-  const bookmarkCount = byDocSlug.value.get(result.slug)?.length ?? 0
-  if (bookmarkCount > 0) {
-    score += 180 + Math.min(60, bookmarkCount * 10)
-  }
-
-  const recentIndex = recentDocuments.value.findIndex((item) => item.docSlug === result.slug)
-  if (recentIndex >= 0) {
-    score += Math.max(0, 140 - (recentIndex * 18))
-  }
-
-  if (activeCollectionId.value && result.collection_id === activeCollectionId.value) {
-    score += 32
-  }
-
-  if (updatedSlugs.value.has(result.slug)) {
-    score += 18
-  }
-
-  const title = result.title.toLowerCase()
-  if (title === queryLower) score += 180
-  else if (title.startsWith(queryLower)) score += 95
-  else if (title.includes(queryLower)) score += 50
-
-  const section = (result.section ?? '').toLowerCase()
-  if (section.includes(queryLower)) score += 22
-
-  if (normalisedSlugTail(result.slug).includes(queryLower)) {
-    score += 36
-  }
-
-  return score
+function recordSelection(result: SearchResult) {
+  usageBySlug.value = updateSearchUsage(usageBySlug.value, result.slug)
+  saveSearchUsage(usageBySlug.value)
 }
 
 function performSearch() {
@@ -104,17 +74,21 @@ function performSearch() {
       const data = await searchDocuments(formatQuery(trimmed), collectionFilter.value, 20)
       if (thisRequest === requestId) {
         const queryLower = trimmed.toLowerCase()
-        results.value = [...data]
-          .map((item, index) => ({
-            item,
-            score: relevanceScore(item, queryLower, index),
-            baselineIndex: index,
-          }))
-          .sort((a, b) => {
-            if (a.score !== b.score) return b.score - a.score
-            return a.baselineIndex - b.baselineIndex
-          })
-          .map((entry) => entry.item)
+        const bookmarkCountBySlug = new Map<string, number>()
+        for (const [slug, list] of byDocSlug.value.entries()) {
+          bookmarkCountBySlug.set(slug, list.length)
+        }
+        const recentIndexBySlug = new Map<string, number>()
+        recentDocuments.value.forEach((item, index) => {
+          recentIndexBySlug.set(item.docSlug, index)
+        })
+        results.value = sortSearchResults(data, queryLower, {
+          bookmarkCountBySlug,
+          recentIndexBySlug,
+          updatedSlugs: updatedSlugs.value,
+          activeCollectionId: activeCollectionId.value || undefined,
+          usageBySlug: usageBySlug.value,
+        })
         error.value = null
       }
     } catch (e) {
@@ -134,5 +108,5 @@ watch(query, () => performSearch())
 watch(collectionFilter, () => performSearch())
 
 export function useSearch() {
-  return { query, results, loading, error, collectionFilter, clearSearch }
+  return { query, results, loading, error, collectionFilter, clearSearch, recordSelection }
 }

@@ -17,9 +17,9 @@ const { collections } = useCollections()
 </script>
 
 <template>
-  <aside class="h-full bg-sidebar/80 backdrop-blur-sm border-r border-border flex flex-col pt-[52px] overflow-hidden">
+  <aside class="h-full bg-sidebar/72 backdrop-blur-xl border-r border-border/70 shadow-[inset_-1px_0_0_rgba(255,255,255,0.02)] flex flex-col pt-[52px] overflow-hidden">
     <!-- Project switcher -->
-    <div class="px-3 pt-2 pb-1" style="-webkit-app-region: no-drag">
+    <div class="px-3 pt-2.5 pb-1.5" style="-webkit-app-region: no-drag">
       <ProjectSwitcher @add-project="$emit('add-project')" />
     </div>
 
@@ -29,23 +29,23 @@ const { collections } = useCollections()
     </div>
 
     <!-- Navigation tree -->
-    <nav class="flex-1 overflow-y-auto px-2 py-1.5" style="-webkit-app-region: no-drag">
+    <nav class="flex-1 overflow-y-auto px-2.5 py-1.5" style="-webkit-app-region: no-drag">
       <div v-if="loading" class="px-3 py-4 space-y-2.5 animate-pulse">
-        <div class="h-5 w-3/4 rounded bg-stone-200 dark:bg-stone-700" />
-        <div class="h-5 w-1/2 rounded bg-stone-200 dark:bg-stone-700" />
-        <div class="h-5 w-5/6 rounded bg-stone-200 dark:bg-stone-700" />
-        <div class="h-5 w-2/3 rounded bg-stone-200 dark:bg-stone-700" />
-        <div class="h-5 w-3/5 rounded bg-stone-200 dark:bg-stone-700" />
-        <div class="h-5 w-4/5 rounded bg-stone-200 dark:bg-stone-700" />
-        <div class="h-5 w-1/2 rounded bg-stone-200 dark:bg-stone-700" />
-        <div class="h-5 w-3/4 rounded bg-stone-200 dark:bg-stone-700" />
+        <div class="ui-skeleton-bar h-5 w-3/4" />
+        <div class="ui-skeleton-bar h-5 w-1/2" />
+        <div class="ui-skeleton-bar h-5 w-5/6" />
+        <div class="ui-skeleton-bar h-5 w-2/3" />
+        <div class="ui-skeleton-bar h-5 w-3/5" />
+        <div class="ui-skeleton-bar h-5 w-4/5" />
+        <div class="ui-skeleton-bar h-5 w-1/2" />
+        <div class="ui-skeleton-bar h-5 w-3/4" />
       </div>
       <SidebarSection v-else :nodes="tree" :level="0" />
     </nav>
 
     <!-- Footer -->
     <div
-      class="flex items-center justify-between px-3 py-2.5 border-t border-border"
+      class="flex items-center justify-between px-3 py-2.5 border-t border-border/70 bg-surface/35"
       style="-webkit-app-region: no-drag"
     >
       <ThemeToggle />

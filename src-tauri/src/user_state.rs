@@ -32,6 +32,7 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
             updated_at INTEGER NOT NULL,
             last_opened_at INTEGER,
             order_index INTEGER NOT NULL DEFAULT 0,
+            open_count INTEGER NOT NULL DEFAULT 0,
             is_favorite INTEGER NOT NULL DEFAULT 0
         );
 
@@ -145,12 +146,33 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
         .map_err(|e| format!("Failed to add bookmarks.is_favorite column: {}", e))?;
     }
 
+    let has_open_count_column: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('bookmarks') WHERE name = 'open_count'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to inspect bookmarks schema: {}", e))?;
+    if has_open_count_column == 0 {
+        conn.execute(
+            "ALTER TABLE bookmarks ADD COLUMN open_count INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("Failed to add bookmarks.open_count column: {}", e))?;
+    }
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_bookmarks_project_favorite
          ON bookmarks(project_id, is_favorite DESC, updated_at DESC)",
         [],
     )
     .map_err(|e| format!("Failed to create bookmarks favourite index: {}", e))?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bookmarks_project_open_count
+         ON bookmarks(project_id, open_count DESC, last_opened_at DESC)",
+        [],
+    )
+    .map_err(|e| format!("Failed to create bookmarks open-count index: {}", e))?;
 
     Ok(conn)
 }

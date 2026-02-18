@@ -7,6 +7,8 @@ import { useCollections } from '@/composables/useCollections'
 import { docSlugWithoutCollection } from '@/lib/deepLinks'
 import { useToast } from '@/composables/useToast'
 import { openBookmarkTarget } from '@/lib/bookmarkResolver'
+import { computeVirtualRange } from '@/lib/virtualList'
+import { sortBookmarksForDisplay } from '@/lib/bookmarkSort'
 
 const router = useRouter()
 const route = useRoute()
@@ -56,7 +58,7 @@ const recovery = ref<{
 
 const filteredBookmarks = computed(() => {
   const query = search.value.trim().toLowerCase()
-  return bookmarks.value.filter((bookmark) => {
+  const filtered = bookmarks.value.filter((bookmark) => {
     if (selectedCollectionFilter.value !== 'all' && bookmark.collectionId !== selectedCollectionFilter.value) {
       return false
     }
@@ -84,6 +86,8 @@ const filteredBookmarks = computed(() => {
 
     return true
   })
+
+  return sortBookmarksForDisplay(filtered)
 })
 
 const collectionCounts = computed(() => {
@@ -106,16 +110,24 @@ const virtualViewportHeight = computed(() =>
   listContainer.value?.clientHeight ?? 600,
 )
 
+const virtualRange = computed(() =>
+  computeVirtualRange({
+    totalItems: filteredBookmarks.value.length,
+    scrollTop: listScrollTop.value,
+    rowHeight: virtualRowHeight,
+    viewportHeight: virtualViewportHeight.value,
+    overscan: virtualOverscan,
+  }),
+)
+
 const virtualStart = computed(() => {
   if (!virtualEnabled.value) return 0
-  const start = Math.floor(listScrollTop.value / virtualRowHeight) - virtualOverscan
-  return Math.max(0, start)
+  return virtualRange.value.start
 })
 
 const virtualEnd = computed(() => {
   if (!virtualEnabled.value) return filteredBookmarks.value.length
-  const visibleRows = Math.ceil(virtualViewportHeight.value / virtualRowHeight) + (virtualOverscan * 2)
-  return Math.min(filteredBookmarks.value.length, virtualStart.value + visibleRows)
+  return virtualRange.value.end
 })
 
 const renderedBookmarks = computed(() =>
@@ -123,13 +135,11 @@ const renderedBookmarks = computed(() =>
 )
 
 const topSpacerHeight = computed(() =>
-  virtualEnabled.value ? virtualStart.value * virtualRowHeight : 0,
+  virtualEnabled.value ? virtualRange.value.topSpacerHeight : 0,
 )
 
 const bottomSpacerHeight = computed(() =>
-  virtualEnabled.value
-    ? Math.max(0, (filteredBookmarks.value.length - virtualEnd.value) * virtualRowHeight)
-    : 0,
+  virtualEnabled.value ? virtualRange.value.bottomSpacerHeight : 0,
 )
 
 const activeCollectionLabel = computed(() => {
@@ -464,7 +474,7 @@ onMounted(() => {
       >
       <select
         v-model="selectedCollectionFilter"
-        class="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+        class="ui-select text-sm"
       >
         <option value="all">All folders</option>
         <option v-for="collection in collections" :key="collection.id" :value="collection.id">
@@ -474,7 +484,7 @@ onMounted(() => {
       <div class="flex items-center gap-2 md:col-span-1">
         <select
           v-model="selectedFolderFilter"
-          class="flex-1 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          class="ui-select flex-1 text-sm"
         >
           <option value="all">All folders</option>
           <option v-for="folder in folders" :key="folder.id" :value="folder.id">
@@ -483,7 +493,7 @@ onMounted(() => {
         </select>
         <select
           v-model="selectedTagFilter"
-          class="flex-1 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          class="ui-select flex-1 text-sm"
         >
           <option value="all">All tags</option>
           <option v-for="tag in tags" :key="tag.id" :value="tag.id">
@@ -583,7 +593,7 @@ onMounted(() => {
         <div class="mt-2 flex flex-wrap items-center gap-2">
           <select
             v-model="bulkFolderId"
-            class="rounded border border-border bg-surface-secondary px-2 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            class="ui-select ui-select-sm text-xs"
           >
             <option value="none">No folder</option>
             <option v-for="folder in folders" :key="folder.id" :value="folder.id">
@@ -600,7 +610,7 @@ onMounted(() => {
           <select
             v-model="bulkTagIds"
             multiple
-            class="min-w-[180px] rounded border border-border bg-surface-secondary px-2 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            class="ui-select min-w-[180px] text-xs"
           >
             <option v-for="tag in tags" :key="tag.id" :value="tag.id">
               {{ tag.name }}
@@ -655,9 +665,12 @@ onMounted(() => {
                   <p class="text-[11px] text-text-secondary/80 mt-1">
                     Last opened: {{ formatDate(bookmark.lastOpenedAt) }}
                   </p>
+                  <p class="text-[11px] text-text-secondary/70 mt-1">
+                    Opened {{ bookmark.openCount }} times
+                  </p>
                 </button>
               </div>
-              <div class="mt-2 flex flex-wrap items-center gap-1.5 ml-6">
+              <div class="mt-2 flex flex-wrap items-center gap-1.5 ml-7">
                 <span
                   v-for="folderId in (relationByBookmarkId.get(bookmark.id)?.folderIds ?? [])"
                   :key="`folder-${bookmark.id}-${folderId}`"
@@ -702,9 +715,12 @@ onMounted(() => {
               <p class="text-[11px] text-text-secondary/80 mt-1">
                 Last opened: {{ formatDate(bookmark.lastOpenedAt) }}
               </p>
+              <p class="text-[11px] text-text-secondary/70 mt-1">
+                Opened {{ bookmark.openCount }} times
+              </p>
             </button>
           </div>
-          <div class="mt-2 flex flex-wrap items-center gap-1.5 ml-6">
+          <div class="mt-2 flex flex-wrap items-center gap-1.5 ml-7">
             <span
               v-for="folderId in (relationByBookmarkId.get(bookmark.id)?.folderIds ?? [])"
               :key="`folder-${bookmark.id}-${folderId}`"

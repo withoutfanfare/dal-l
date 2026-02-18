@@ -39,6 +39,8 @@ const route = useRoute()
 const contentContainerClass = computed(() =>
   route.name === 'doc'
     ? 'mx-auto max-w-6xl px-6 py-10 lg:px-8'
+    : route.name === 'springboard'
+      ? 'mx-auto max-w-5xl px-6 py-10 lg:px-8'
     : 'mx-auto max-w-3xl px-10 py-10',
 )
 
@@ -116,38 +118,19 @@ function handleOpenSettings() {
     </a>
     <!-- Top drag region / toolbar -->
     <div
-      class="fixed top-0 left-0 right-0 h-[52px] z-50 flex items-center bg-surface/80 backdrop-blur-sm"
+      class="fixed top-0 left-0 right-0 h-[52px] z-50 flex items-center border-b border-border/70 bg-surface/72 backdrop-blur-xl"
       style="-webkit-app-region: drag"
     >
       <!-- Left side: navigation controls -->
-      <div class="flex-1 flex items-center gap-1.5 pl-[78px]" style="-webkit-app-region: no-drag">
-        <Transition
-          enter-active-class="duration-150 ease-out"
-          enter-from-class="opacity-0 -translate-x-1"
-          enter-to-class="opacity-100 translate-x-0"
-          leave-active-class="duration-100 ease-in"
-          leave-from-class="opacity-100 translate-x-0"
-          leave-to-class="opacity-0 -translate-x-1"
-        >
-          <button
-            v-if="collapsed"
-            class="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-secondary/80 transition-colors"
-            title="Show sidebar (Cmd+\)"
-            @click="toggleSidebar"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-            </svg>
-          </button>
-        </Transition>
+      <div class="min-w-0 flex-1 flex items-center gap-1.5 pl-[78px] pr-2" style="-webkit-app-region: no-drag">
         <TopBarNavControls />
         <TopBarBookmarks v-if="bookmarksEnabled" />
       </div>
 
-      <!-- Centre: search trigger -->
-      <div class="flex-1 flex justify-center px-4" style="-webkit-app-region: no-drag">
+      <!-- Right side toolbar actions -->
+      <div class="pr-3 flex items-center gap-1.5" style="-webkit-app-region: no-drag">
         <button
-          class="flex items-center gap-2 w-full max-w-[280px] h-7 px-2.5 rounded-lg border border-border/60 bg-surface-secondary/40 text-text-secondary text-xs hover:bg-surface-secondary/70 hover:border-border transition-colors"
+          class="flex items-center gap-2 w-[250px] h-7 px-2.5 rounded-lg border border-border/55 bg-surface-secondary/35 text-text-secondary text-xs hover:bg-surface-secondary/70 hover:border-border transition-colors"
           title="Search (Cmd+K)"
           @click="openSearch"
         >
@@ -159,10 +142,6 @@ function handleOpenSettings() {
             <span class="text-[11px]">&#8984;</span>K
           </kbd>
         </button>
-      </div>
-
-      <!-- Right side toolbar actions -->
-      <div class="pr-3 flex items-center gap-1.5" style="-webkit-app-region: no-drag">
         <template v-if="showAiPanel">
           <button
             class="h-7 px-2.5 rounded-md text-xs font-medium transition-colors border border-border/60 bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border"
@@ -218,6 +197,27 @@ function handleOpenSettings() {
         <router-view />
       </div>
     </main>
+
+    <Transition
+      enter-active-class="duration-150 ease-out"
+      enter-from-class="opacity-0 -translate-x-1"
+      enter-to-class="opacity-100 translate-x-0"
+      leave-active-class="duration-100 ease-in"
+      leave-from-class="opacity-100 translate-x-0"
+      leave-to-class="opacity-0 -translate-x-1"
+    >
+      <button
+        v-if="collapsed"
+        class="fixed bottom-3 left-3 z-[60] flex items-center justify-center w-8 h-8 rounded-md border border-border/70 bg-surface/82 text-text-secondary shadow-lg backdrop-blur hover:text-text-primary hover:bg-surface-secondary/82 transition-colors"
+        title="Show sidebar (Cmd+\\)"
+        style="-webkit-app-region: no-drag"
+        @click="toggleSidebar"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5" />
+        </svg>
+      </button>
+    </Transition>
 
     <!-- Add project dialog -->
     <AddProjectDialog v-if="showAddProject" @close="showAddProject = false" />

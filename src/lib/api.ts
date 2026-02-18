@@ -172,6 +172,10 @@ export async function touchBookmarkOpened(bookmarkId: number): Promise<void> {
   return invoke('touch_bookmark_opened', { bookmarkId })
 }
 
+export async function setBookmarkFavorite(bookmarkId: number, isFavorite: boolean): Promise<Bookmark> {
+  return invoke('set_bookmark_favorite', { bookmarkId, isFavorite })
+}
+
 export async function listBookmarkFolders(projectId: string): Promise<BookmarkFolder[]> {
   return invoke('list_bookmark_folders', { projectId })
 }

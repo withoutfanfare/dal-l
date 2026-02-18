@@ -89,6 +89,8 @@ pub struct Bookmark {
     pub updated_at: i64,
     pub last_opened_at: Option<i64>,
     pub order_index: i64,
+    pub open_count: i64,
+    pub is_favorite: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

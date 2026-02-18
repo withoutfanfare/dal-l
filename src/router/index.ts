@@ -24,6 +24,11 @@ const router = createRouter({
       component: () => import('@/pages/BookmarksPage.vue'),
     },
     {
+      path: '/springboard/:collection?',
+      name: 'springboard',
+      component: () => import('@/pages/TabSpringboardPage.vue'),
+    },
+    {
       path: '/:collection/:slug(.*)',
       name: 'doc',
       component: () => import('@/pages/DocPage.vue'),

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useProjects } from '@/composables/useProjects'
 import { useCollections } from '@/composables/useCollections'
 import { useDocTabs } from '@/composables/useDocTabs'
+import { buildTabMenu } from '@/lib/tabMenu'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,9 +15,9 @@ const {
   getActiveSlug,
   closeTab,
   setActiveTab,
+  beginNewTab,
+  isNewTabPending,
   clearCollectionTabs,
-  closeUnpinnedTabs,
-  togglePinTab,
   moveTab,
   getAdjacentSlug,
 } = useDocTabs()
@@ -26,7 +27,8 @@ const showScrollLeft = ref(false)
 const showScrollRight = ref(false)
 const tabsMenuOpen = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
-const tabsMenuScope = ref<'all' | 'pinned'>('all')
+const tabsMenuQuery = ref('')
+const tabsMenuSearchInput = ref<HTMLInputElement | null>(null)
 
 const projectKey = computed(() => activeProjectId.value || 'default')
 
@@ -54,18 +56,24 @@ const activeSlug = computed(() => {
 })
 
 const showTabs = computed(() =>
-  route.name === 'doc' && tabs.value.length > 0,
+  (route.name === 'doc' || route.name === 'springboard') && tabs.value.length > 0,
 )
 const showOverflowMenu = computed(() =>
   tabs.value.length > 8 || showScrollLeft.value || showScrollRight.value,
 )
-const menuTabs = computed(() => {
-  if (tabsMenuScope.value === 'pinned') {
-    return tabs.value.filter((tab) => tab.pinned)
-  }
-  return tabs.value
+const menuState = computed(() =>
+  buildTabMenu(tabs.value, {
+    scope: 'all',
+    query: tabsMenuQuery.value,
+  }),
+)
+const menuTabs = computed(() => menuState.value.tabs)
+const menuTotal = computed(() => menuState.value.total)
+const menuHiddenCount = computed(() => menuState.value.hiddenCount)
+const newTabPending = computed(() => {
+  if (!currentCollectionId.value) return false
+  return isNewTabPending(projectKey.value, currentCollectionId.value)
 })
-const hasUnpinnedTabs = computed(() => tabs.value.some((tab) => !tab.pinned))
 
 function openTab(slug: string) {
   if (!currentCollectionId.value) return
@@ -95,7 +103,10 @@ function closeSingleTab(slug: string) {
         },
       }).catch(() => {})
     } else {
-      router.push(`/${currentCollectionId.value}`).catch(() => {})
+      router.push({
+        name: 'springboard',
+        params: { collection: currentCollectionId.value },
+      }).catch(() => {})
     }
   }
 }
@@ -103,8 +114,23 @@ function closeSingleTab(slug: string) {
 function closeAllTabs() {
   if (!currentCollectionId.value) return
   clearCollectionTabs(projectKey.value, currentCollectionId.value)
-  router.push(`/${currentCollectionId.value}`).catch(() => {})
+  router.push({
+    name: 'springboard',
+    params: { collection: currentCollectionId.value },
+  }).catch(() => {})
   tabsMenuOpen.value = false
+  tabsMenuQuery.value = ''
+}
+
+function startNewTab() {
+  const collectionId = currentCollectionId.value || activeCollectionId.value || ''
+  if (!collectionId) return
+  beginNewTab(projectKey.value, collectionId)
+  router.push({
+    name: 'springboard',
+    params: { collection: collectionId },
+    query: { from: route.fullPath },
+  }).catch(() => {})
 }
 
 function encodedSlug(slug: string): string {
@@ -142,21 +168,18 @@ function ensureTabVisible(slug: string) {
   target?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
 }
 
-function togglePinned(slug: string) {
-  if (!currentCollectionId.value) return
-  togglePinTab(projectKey.value, currentCollectionId.value, slug)
-  nextTick(() => {
-    ensureTabVisible(slug)
-    updateOverflowState()
-  })
-}
-
 function toggleTabsMenu() {
   tabsMenuOpen.value = !tabsMenuOpen.value
+  if (tabsMenuOpen.value) {
+    nextTick(() => tabsMenuSearchInput.value?.focus())
+  } else {
+    tabsMenuQuery.value = ''
+  }
 }
 
 function openFromMenu(slug: string) {
   tabsMenuOpen.value = false
+  tabsMenuQuery.value = ''
   openTab(slug)
 }
 
@@ -164,27 +187,15 @@ function closeFromMenu(slug: string) {
   closeSingleTab(slug)
 }
 
-function closeUnpinnedFromMenu() {
-  if (!currentCollectionId.value) return
-  const previousActive = activeSlug.value
-  const nextActive = closeUnpinnedTabs(projectKey.value, currentCollectionId.value)
-  tabsMenuOpen.value = false
+function clearTabsMenuQuery() {
+  tabsMenuQuery.value = ''
+  nextTick(() => tabsMenuSearchInput.value?.focus())
+}
 
-  if (previousActive && previousActive !== nextActive) {
-    if (nextActive) {
-      router.push({
-        name: 'doc',
-        params: {
-          collection: currentCollectionId.value,
-          slug: nextActive,
-        },
-      }).catch(() => {})
-    } else {
-      router.push(`/${currentCollectionId.value}`).catch(() => {})
-    }
-  }
-
-  nextTick(updateOverflowState)
+function openFirstMenuMatch() {
+  const first = menuTabs.value[0]
+  if (!first) return
+  openFromMenu(first.slug)
 }
 
 function onDocumentClick(event: MouseEvent) {
@@ -192,12 +203,14 @@ function onDocumentClick(event: MouseEvent) {
   const target = event.target as Node
   if (!rootRef.value.contains(target)) {
     tabsMenuOpen.value = false
+    tabsMenuQuery.value = ''
   }
 }
 
 function onDocumentKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && tabsMenuOpen.value) {
     tabsMenuOpen.value = false
+    tabsMenuQuery.value = ''
   }
 }
 
@@ -235,9 +248,14 @@ function onPrevTab() {
   switchToAdjacent(-1)
 }
 
+function onNewTabIntent() {
+  startNewTab()
+}
+
 onMounted(() => {
   window.addEventListener('dalil:tab-next', onNextTab)
   window.addEventListener('dalil:tab-prev', onPrevTab)
+  window.addEventListener('dalil:new-tab-intent', onNewTabIntent)
   window.addEventListener('resize', updateOverflowState)
   window.document.addEventListener('click', onDocumentClick)
   window.document.addEventListener('keydown', onDocumentKeydown)
@@ -247,6 +265,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('dalil:tab-next', onNextTab)
   window.removeEventListener('dalil:tab-prev', onPrevTab)
+  window.removeEventListener('dalil:new-tab-intent', onNewTabIntent)
   window.removeEventListener('resize', updateOverflowState)
   window.document.removeEventListener('click', onDocumentClick)
   window.document.removeEventListener('keydown', onDocumentKeydown)
@@ -275,13 +294,13 @@ watch(
   <div
     v-if="showTabs"
     ref="rootRef"
-    class="sticky top-0 z-30 h-[34px] border-b border-border bg-surface/90 backdrop-blur"
+    class="sticky top-0 z-30 h-[36px] border-b border-border/65 bg-surface/74 backdrop-blur-xl"
     style="-webkit-app-region: no-drag"
   >
     <div class="h-full flex items-center gap-1 px-2">
       <button
         v-if="showScrollLeft"
-        class="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
+        class="flex h-7 w-7 items-center justify-center rounded-md border border-border/55 bg-surface-secondary/35 text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
         title="Scroll tabs left"
         @click="scrollTabs(-1)"
       >
@@ -302,7 +321,7 @@ watch(
             class="group inline-flex items-center gap-1 rounded-md px-2 h-7 text-xs border transition-colors max-w-[260px]"
             :class="activeSlug === tab.slug
               ? 'border-accent/40 bg-accent/10 text-accent'
-              : 'border-border bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary'"
+              : 'border-border/70 bg-surface-secondary/35 text-text-secondary hover:text-text-primary hover:bg-surface-secondary'"
             :data-tab-slug="encodedSlug(tab.slug)"
             role="button"
             tabindex="0"
@@ -315,21 +334,7 @@ watch(
             @drop="onDrop(tab.slug)"
             @dragend="onDragEnd"
           >
-            <span
-              v-if="tab.pinned"
-              class="h-1.5 w-1.5 rounded-full bg-accent/80"
-              title="Pinned tab"
-            />
             <span class="truncate">{{ tab.title }}</span>
-            <button
-              class="inline-flex h-5 w-5 items-center justify-center rounded text-[10px] text-text-secondary/80 hover:text-text-primary hover:bg-black/10 transition-colors"
-              :title="tab.pinned ? 'Unpin tab' : 'Pin tab'"
-              @click.stop="togglePinned(tab.slug)"
-            >
-              <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 4.5h9l-2.25 5.25v3.75l2.25 1.5v1.5h-9V15l2.25-1.5V9.75L7.5 4.5z" />
-              </svg>
-            </button>
             <button
               class="inline-flex h-5 w-5 items-center justify-center rounded text-[11px] text-text-secondary/80 hover:text-text-primary hover:bg-black/10 transition-colors"
               title="Close tab"
@@ -343,7 +348,7 @@ watch(
 
       <button
         v-if="showScrollRight"
-        class="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
+        class="flex h-7 w-7 items-center justify-center rounded-md border border-border/55 bg-surface-secondary/35 text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
         title="Scroll tabs right"
         @click="scrollTabs(1)"
       >
@@ -352,9 +357,20 @@ watch(
         </svg>
       </button>
 
+      <button
+        class="h-7 w-7 rounded-md border text-xs transition-colors inline-flex items-center justify-center"
+        :class="newTabPending
+          ? 'border-accent/40 bg-accent/10 text-accent'
+          : 'border-border/55 bg-surface-secondary/35 text-text-secondary hover:text-text-primary hover:bg-surface-secondary'"
+        title="New tab (Cmd/Ctrl+T), then pick a document"
+        @click="startNewTab"
+      >
+        +
+      </button>
+
       <div v-if="showOverflowMenu" class="relative">
         <button
-          class="h-7 px-2 rounded-md border border-border bg-surface-secondary/40 text-text-secondary text-xs hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center gap-1"
+          class="h-7 px-2 rounded-md border border-border/55 bg-surface-secondary/35 text-text-secondary text-xs hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center gap-1"
           title="All tabs"
           @click="toggleTabsMenu"
         >
@@ -384,40 +400,35 @@ watch(
                 >
                   Close all
                 </button>
-                <button
-                  v-if="hasUnpinnedTabs"
-                  class="text-[11px] text-text-secondary hover:text-text-primary"
-                  @click="closeUnpinnedFromMenu"
-                >
-                  Close unpinned
-                </button>
               </div>
             </div>
             <div class="border-b border-border px-3 py-1.5">
-              <div class="flex items-center gap-1">
-                <button
-                  class="rounded px-2 py-0.5 text-[11px] border transition-colors"
-                  :class="tabsMenuScope === 'all'
-                    ? 'border-accent/40 bg-accent/10 text-accent'
-                    : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-secondary'"
-                  @click="tabsMenuScope = 'all'"
+              <div class="mb-1.5 flex items-center justify-between gap-2">
+                <p class="text-[11px] text-text-secondary">
+                  {{ menuTotal }} match{{ menuTotal === 1 ? '' : 'es' }}
+                </p>
+              </div>
+              <div class="relative">
+                <input
+                  ref="tabsMenuSearchInput"
+                  v-model="tabsMenuQuery"
+                  class="w-full rounded-md border border-border bg-surface-secondary/40 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary/80 focus:outline-none focus:ring-2 focus:ring-accent/35"
+                  placeholder="Search open tabs"
+                  @keydown.enter.prevent="openFirstMenuMatch"
                 >
-                  All
-                </button>
                 <button
-                  class="rounded px-2 py-0.5 text-[11px] border transition-colors"
-                  :class="tabsMenuScope === 'pinned'
-                    ? 'border-accent/40 bg-accent/10 text-accent'
-                    : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-secondary'"
-                  @click="tabsMenuScope = 'pinned'"
+                  v-if="tabsMenuQuery"
+                  class="absolute inset-y-0 right-1 inline-flex items-center px-1 text-[11px] text-text-secondary hover:text-text-primary"
+                  title="Clear search"
+                  @click="clearTabsMenuQuery"
                 >
-                  Pinned
+                  ×
                 </button>
               </div>
             </div>
             <div class="max-h-[280px] overflow-y-auto p-2 space-y-1">
               <div v-if="menuTabs.length === 0" class="px-2 py-3 text-xs text-text-secondary">
-                No tabs in this filter.
+                {{ tabsMenuQuery ? 'No tabs match this search.' : 'No tabs in this filter.' }}
               </div>
               <div
                 v-for="tab in menuTabs"
@@ -430,17 +441,7 @@ watch(
                   :class="activeSlug === tab.slug ? 'text-accent font-medium' : 'text-text-primary'"
                   @click="openFromMenu(tab.slug)"
                 >
-                  <span v-if="tab.pinned" class="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-accent/80 align-middle" />
                   {{ tab.title }}
-                </button>
-                <button
-                  class="inline-flex h-5 w-5 items-center justify-center rounded text-[10px] text-text-secondary hover:text-text-primary hover:bg-black/10 transition-colors"
-                  :title="tab.pinned ? 'Unpin tab' : 'Pin tab'"
-                  @click="togglePinned(tab.slug)"
-                >
-                  <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 4.5h9l-2.25 5.25v3.75l2.25 1.5v1.5h-9V15l2.25-1.5V9.75L7.5 4.5z" />
-                  </svg>
                 </button>
                 <button
                   class="inline-flex h-5 w-5 items-center justify-center rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-black/10 transition-colors"
@@ -451,12 +452,18 @@ watch(
                 </button>
               </div>
             </div>
+            <div
+              v-if="menuHiddenCount > 0"
+              class="border-t border-border px-3 py-1.5 text-[11px] text-text-secondary"
+            >
+              Showing first {{ menuTabs.length }} of {{ menuTotal }} matches. Refine search to narrow results.
+            </div>
           </div>
         </Transition>
       </div>
 
       <button
-        class="h-7 px-2 rounded-md border border-border bg-surface-secondary/40 text-text-secondary text-xs hover:text-text-primary hover:bg-surface-secondary transition-colors"
+        class="h-7 px-2 rounded-md border border-border/55 bg-surface-secondary/35 text-text-secondary text-xs hover:text-text-primary hover:bg-surface-secondary transition-colors"
         @click="closeAllTabs"
       >
         Close all

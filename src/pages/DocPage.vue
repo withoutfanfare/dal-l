@@ -55,6 +55,11 @@ const docBookmarks = computed(() => {
   return byDocSlug.value.get(document.value.slug) ?? []
 })
 
+const changedSectionsLabel = computed(() => {
+  const count = changedHeadingIds.value.length
+  return `${count} section${count === 1 ? '' : 's'} changed since last visit`
+})
+
 function compareSnapshotKey(projectId: string, docSlug: string): string {
   return `dalil:compare:${projectId}:${docSlug}`
 }
@@ -412,22 +417,22 @@ watch(noteDraft, () => {
     />
   </div>
 
-  <div class="flex gap-8">
+  <div class="flex gap-10 xl:gap-14">
     <div class="min-w-0 flex-1">
       <!-- Loading skeleton -->
       <div v-if="loading" class="animate-pulse">
-        <div class="h-4 w-1/4 rounded bg-stone-200 dark:bg-stone-700 mb-6" />
-        <div class="h-8 w-1/3 rounded bg-stone-200 dark:bg-stone-700 mb-8" />
+        <div class="ui-skeleton-bar h-4 w-1/4 mb-6" />
+        <div class="ui-skeleton-bar h-8 w-1/3 mb-8" />
         <div class="space-y-4">
-          <div class="h-4 w-full rounded bg-stone-200 dark:bg-stone-700" />
-          <div class="h-4 w-5/6 rounded bg-stone-200 dark:bg-stone-700" />
-          <div class="h-4 w-4/6 rounded bg-stone-200 dark:bg-stone-700" />
+          <div class="ui-skeleton-bar h-4 w-full" />
+          <div class="ui-skeleton-bar h-4 w-5/6" />
+          <div class="ui-skeleton-bar h-4 w-4/6" />
         </div>
         <div class="mt-8 space-y-4">
-          <div class="h-4 w-full rounded bg-stone-200 dark:bg-stone-700" />
-          <div class="h-4 w-3/4 rounded bg-stone-200 dark:bg-stone-700" />
-          <div class="h-4 w-5/6 rounded bg-stone-200 dark:bg-stone-700" />
-          <div class="h-4 w-2/3 rounded bg-stone-200 dark:bg-stone-700" />
+          <div class="ui-skeleton-bar h-4 w-full" />
+          <div class="ui-skeleton-bar h-4 w-3/4" />
+          <div class="ui-skeleton-bar h-4 w-5/6" />
+          <div class="ui-skeleton-bar h-4 w-2/3" />
         </div>
       </div>
 
@@ -455,23 +460,23 @@ watch(noteDraft, () => {
 
       <!-- Document -->
       <template v-else-if="document">
-        <Breadcrumbs :document="document" class="mb-6" />
+        <Breadcrumbs :document="document" class="mb-3 px-1" />
         <ContentHeader
           :document="document"
           @share-link="handleShareLink"
         />
 
-        <div class="mb-4 rounded-lg border border-border bg-surface p-3">
+        <div class="mb-5 rounded-xl border border-border/60 bg-surface/45 backdrop-blur-xl px-3.5 py-2.5 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.85)]">
           <div class="flex flex-wrap items-center gap-2">
             <button
-              class="rounded border border-border px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
+              class="inline-flex h-8 items-center rounded-md border border-border/60 bg-surface-secondary/30 px-3 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
               :class="compareModeEnabled ? 'bg-accent/10 text-accent border-accent/30' : ''"
               @click="compareModeEnabled = !compareModeEnabled"
             >
               {{ compareModeEnabled ? 'Compare mode on' : 'Compare mode off' }}
             </button>
-            <span class="text-xs text-text-secondary">
-              {{ changedHeadingIds.length }} section(s) changed since last visit
+            <span class="inline-flex h-8 items-center rounded-md border border-border/60 bg-surface-secondary/24 px-3 text-xs text-text-secondary tabular-nums">
+              {{ changedSectionsLabel }}
             </span>
           </div>
         </div>
@@ -526,6 +531,7 @@ watch(noteDraft, () => {
       :changed-section-titles="changedSectionTitles"
       :removed-section-titles="removedSectionTitles"
       :focus-note-token="focusNoteToken"
+      :show-back-to-top="showBackToTop"
       @toggle-page-bookmark="handleToggleBookmark"
       @bookmark-active-section="handleBookmarkActiveSection"
       @open-bookmark-anchor="handleOpenBookmarkAnchor"
@@ -533,27 +539,7 @@ watch(noteDraft, () => {
       @note-change="handleNoteChange"
       @add-highlight="handleAddHighlightFromSelection"
       @remove-highlight="handleDeleteHighlight"
+      @scroll-top="scrollToTop"
     />
   </div>
-
-  <!-- Back to top -->
-  <Transition
-    enter-active-class="duration-200 ease-out"
-    enter-from-class="opacity-0 scale-90"
-    enter-to-class="opacity-100 scale-100"
-    leave-active-class="duration-150 ease-in"
-    leave-from-class="opacity-100 scale-100"
-    leave-to-class="opacity-0 scale-90"
-  >
-    <button
-      v-if="showBackToTop"
-      class="fixed bottom-6 right-6 z-[100] flex items-center justify-center w-9 h-9 rounded-full bg-surface shadow-lg ring-1 ring-border text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
-      title="Back to top"
-      @click="scrollToTop"
-    >
-      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-      </svg>
-    </button>
-  </Transition>
 </template>

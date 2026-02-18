@@ -147,6 +147,12 @@ export function useKeyboardShortcuts(router: Router) {
         return true
       }
 
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('dalil:new-tab-intent'))
+        return true
+      }
+
       if (e.ctrlKey && e.key === 'Tab' && !e.shiftKey) {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('dalil:tab-next'))

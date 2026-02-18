@@ -113,6 +113,7 @@ pub fn run() {
             commands::remove_bookmark,
             commands::repair_bookmark_target,
             commands::touch_bookmark_opened,
+            commands::set_bookmark_favorite,
             commands::list_bookmark_folders,
             commands::create_bookmark_folder,
             commands::delete_bookmark_folder,

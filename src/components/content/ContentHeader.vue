@@ -43,7 +43,7 @@ const relativeDate = computed(() => {
 </script>
 
 <template>
-  <header class="mb-8 pb-6 border-b border-border">
+  <header class="mb-5 rounded-xl border border-border/60 bg-surface/50 backdrop-blur-xl px-4 py-4 shadow-[0_14px_30px_-26px_rgba(15,23,42,0.8)]">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
         <p v-if="document.section" class="text-xs font-medium uppercase tracking-wider text-text-secondary mb-2">
@@ -55,7 +55,7 @@ const relativeDate = computed(() => {
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <button
-          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
+          class="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-surface-secondary/30 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors"
           title="Copy link (S)"
           @click="emit('share-link')"
         >
@@ -67,7 +67,7 @@ const relativeDate = computed(() => {
         </button>
       </div>
     </div>
-    <p class="text-sm text-stone-400 mt-2">
+    <p class="text-sm text-text-secondary mt-2.5">
       <span v-if="relativeDate">{{ relativeDate }}</span>
       <span v-if="relativeDate"> &middot; </span>
       <span>{{ readingTime }} min read</span>

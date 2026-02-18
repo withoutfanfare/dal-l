@@ -1,35 +1,27 @@
 import { ref, watch, type WatchStopHandle } from 'vue'
 import type { Router, RouteLocationNormalizedLoaded } from 'vue-router'
-
-export interface DocTab {
-  slug: string
-  title: string
-  lastOpenedAt: number
-  pinned?: boolean
-}
-
-interface TabBucket {
-  tabs: DocTab[]
-  activeSlug: string | null
-}
+import {
+  defaultTitleFromSlug,
+  upsertTabInBucket,
+  syncRouteToTabBucket,
+  moveTabInBucket,
+  getAdjacentSlugInBucket,
+  togglePinInBucket,
+  closeUnpinnedTabsInBucket,
+  type DocTab,
+  type TabBucket,
+} from '@/lib/tabState'
 
 type TabState = Record<string, TabBucket>
 
 const STORAGE_KEY = 'dalil:doc-tabs:v1'
 const state = ref<TabState>({})
+const pendingNewTabKeys = new Set<string>()
 let hydrated = false
 let stopHandle: WatchStopHandle | null = null
 
 function storageKey(projectId: string, collectionId: string): string {
   return `${projectId}::${collectionId}`
-}
-
-function defaultTitle(slug: string): string {
-  const tail = slug.split('/').filter(Boolean).pop() ?? slug
-  return tail
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
 }
 
 function hydrate() {
@@ -80,26 +72,13 @@ function parseDocRoute(route: RouteLocationNormalizedLoaded): { collectionId: st
   }
 }
 
-function upsertTab(projectId: string, collectionId: string, slug: string, title: string) {
+function syncRouteToTabs(projectId: string, collectionId: string, slug: string, title: string) {
+  const key = storageKey(projectId, collectionId)
+  const createNewTab = pendingNewTabKeys.has(key)
+  pendingNewTabKeys.delete(key)
+
   const bucket = ensureBucket(projectId, collectionId)
-  const idx = bucket.tabs.findIndex((tab) => tab.slug === slug)
-  const now = Date.now()
-
-  if (idx >= 0) {
-    bucket.tabs[idx] = {
-      ...bucket.tabs[idx],
-      title: title || bucket.tabs[idx].title,
-      lastOpenedAt: now,
-    }
-  } else {
-    bucket.tabs.push({
-      slug,
-      title: title || defaultTitle(slug),
-      lastOpenedAt: now,
-    })
-  }
-
-  bucket.activeSlug = slug
+  syncRouteToTabBucket(bucket, slug, title, createNewTab)
   persist()
 }
 
@@ -116,7 +95,7 @@ export function useDocTabs() {
         if (!docRoute) return
 
         const projectId = getProjectId() || 'default'
-        upsertTab(projectId, docRoute.collectionId, docRoute.slug, defaultTitle(docRoute.slug))
+        syncRouteToTabs(projectId, docRoute.collectionId, docRoute.slug, defaultTitleFromSlug(docRoute.slug))
       },
       { immediate: true },
     )
@@ -160,58 +139,36 @@ export function useDocTabs() {
     const bucket = ensureBucket(projectId, collectionId)
     const tab = bucket.tabs.find((item) => item.slug === slug)
     if (!tab) {
-      upsertTab(projectId, collectionId, slug, title)
+      upsertTabInBucket(bucket, slug, title)
+      persist()
       return
     }
     tab.title = title || tab.title
     persist()
   }
 
+  function beginNewTab(projectId: string, collectionId: string) {
+    pendingNewTabKeys.add(storageKey(projectId, collectionId))
+  }
+
+function isNewTabPending(projectId: string, collectionId: string): boolean {
+  return pendingNewTabKeys.has(storageKey(projectId, collectionId))
+}
+
+function cancelNewTab(projectId: string, collectionId: string) {
+  pendingNewTabKeys.delete(storageKey(projectId, collectionId))
+}
+
   function togglePinTab(projectId: string, collectionId: string, slug: string): boolean | null {
     const bucket = ensureBucket(projectId, collectionId)
-    const idx = bucket.tabs.findIndex((item) => item.slug === slug)
-    if (idx < 0) return null
-
-    const current = bucket.tabs[idx]
-    const nextPinned = !current.pinned
-    const updated = {
-      ...current,
-      pinned: nextPinned,
-      lastOpenedAt: Date.now(),
-    }
-
-    bucket.tabs[idx] = updated
-    const [moved] = bucket.tabs.splice(idx, 1)
-
-    if (nextPinned) {
-      const firstUnpinnedIndex = bucket.tabs.findIndex((item) => !item.pinned)
-      const targetIndex = firstUnpinnedIndex === -1 ? bucket.tabs.length : firstUnpinnedIndex
-      bucket.tabs.splice(targetIndex, 0, moved)
-    } else {
-      let lastPinnedIndex = -1
-      for (let i = bucket.tabs.length - 1; i >= 0; i -= 1) {
-        if (bucket.tabs[i].pinned) {
-          lastPinnedIndex = i
-          break
-        }
-      }
-      bucket.tabs.splice(lastPinnedIndex + 1, 0, moved)
-    }
-
+    const nextPinned = togglePinInBucket(bucket, slug)
     persist()
     return nextPinned
   }
 
   function moveTab(projectId: string, collectionId: string, slug: string, targetIndex: number) {
     const bucket = ensureBucket(projectId, collectionId)
-    const fromIndex = bucket.tabs.findIndex((item) => item.slug === slug)
-    if (fromIndex < 0) return
-
-    const boundedIndex = Math.max(0, Math.min(targetIndex, bucket.tabs.length - 1))
-    if (fromIndex === boundedIndex) return
-
-    const [moved] = bucket.tabs.splice(fromIndex, 1)
-    bucket.tabs.splice(boundedIndex, 0, moved)
+    moveTabInBucket(bucket, slug, targetIndex)
     persist()
   }
 
@@ -222,13 +179,7 @@ export function useDocTabs() {
     direction: -1 | 1,
   ): string | null {
     const bucket = ensureBucket(projectId, collectionId)
-    if (bucket.tabs.length === 0) return null
-    const currentIndex = bucket.tabs.findIndex((item) => item.slug === slug)
-    if (currentIndex < 0) return bucket.tabs[0]?.slug ?? null
-
-    const nextIndex = currentIndex + direction
-    if (nextIndex < 0 || nextIndex >= bucket.tabs.length) return null
-    return bucket.tabs[nextIndex]?.slug ?? null
+    return getAdjacentSlugInBucket(bucket, slug, direction)
   }
 
   function clearCollectionTabs(projectId: string, collectionId: string) {
@@ -241,19 +192,9 @@ export function useDocTabs() {
 
   function closeUnpinnedTabs(projectId: string, collectionId: string): string | null {
     const bucket = ensureBucket(projectId, collectionId)
-    const kept = bucket.tabs.filter((tab) => tab.pinned)
-    if (kept.length === bucket.tabs.length) {
-      return bucket.activeSlug
-    }
-
-    const activeTab = bucket.tabs.find((tab) => tab.slug === bucket.activeSlug) ?? null
-    bucket.tabs = kept
-    if (!activeTab?.pinned) {
-      bucket.activeSlug = kept[kept.length - 1]?.slug ?? null
-    }
-
+    const next = closeUnpinnedTabsInBucket(bucket)
     persist()
-    return bucket.activeSlug
+    return next
   }
 
   return {
@@ -264,10 +205,28 @@ export function useDocTabs() {
     closeTab,
     setActiveTab,
     setTabTitle,
+    beginNewTab,
+    isNewTabPending,
+    cancelNewTab,
     togglePinTab,
     moveTab,
     getAdjacentSlug,
     clearCollectionTabs,
     closeUnpinnedTabs,
+  }
+}
+
+export function __unsafeResetDocTabsForTests(options?: { clearStorage?: boolean }) {
+  stopHandle?.()
+  stopHandle = null
+  hydrated = false
+  state.value = {}
+  pendingNewTabKeys.clear()
+  if (options?.clearStorage) {
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      // Ignore storage errors in tests.
+    }
   }
 }

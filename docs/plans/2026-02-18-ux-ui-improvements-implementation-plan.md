@@ -397,6 +397,8 @@ And the last active tab is selected.
    - pin/unpin tabs with persisted state
    - overflow menu for large tab sets (quick switch, pin/unpin, close)
    - advanced large-set ergonomics (pinned filter + close-unpinned action)
+   - browser-like creation model: navigation reuses active tab; new tabs only from explicit new-tab intent (`+` / `Cmd/Ctrl+T`)
+   - guided new-tab springboard page (`/springboard/:collection?`) with search, recents, and bookmarks
 11. Deep-link missing-project guided resume flow:
    - pending target persisted locally
    - Projects page resume/switch/dismiss banner actions
@@ -410,18 +412,34 @@ And the last active tab is selected.
    - Ask UI renders clickable source references for answers
 15. Search ranking tuning baseline:
    - composite relevance ordering for command search (bookmarks + recency + active collection + text intent)
+16. Bookmark favourites baseline:
+   - persisted favourite state in user-state DB
+   - favourite-first ordering in bookmark lists
+   - quick favourite toggles and favourites filtering in top-bar/bookmarks page
+17. Bookmark frequency baseline:
+   - persisted `open_count` tracking per bookmark
+   - frequency-aware ordering and visibility in bookmark surfaces
+18. QA regression baseline (automated):
+   - added Node/TS test suite for core tab-state logic, deep-link parsing, bookmark sorting, and virtual-list window math
+19. Search ranking phase 2 calibration baseline:
+   - usage-aware ranking telemetry from command palette result selections
+   - shared search-ranking scorer with edge-case tests (exact matches, usage boosts, multi-signal balancing)
+20. QA integration-flow baseline:
+   - integration-style tests for `useDocTabs` route/persistence wiring
+   - pending deep-link resume resolution flow tests (exact, nearest, unresolved)
+21. QA route-flow coverage for pending deep-link banner actions:
+   - added action-flow helper tests for Resume, Switch to target project, and Dismiss interactions
+   - verifies route push, toast feedback, and clear/retain pending-state behavior
+22. Tabs overflow large-set polish + coverage:
+   - added searchable overflow tabs menu with compact result counts and clear-search affordance
+   - added bounded menu result window messaging for large tab sets
+   - added tab-menu logic tests for scope filtering, ranking, and large-set limit handling
 
 ### Outstanding (Prioritized)
 
-1. Tabs and constrained-width polish:
-   - optional additional bulk-close modes beyond “close unpinned” (for future)
-2. Bookmark scalability polish (phase 2):
-   - pinned/favourite bookmarks and stronger recency/frequency affordances
-3. Search ranking tuning (phase 2):
-   - calibrate weighting with usage telemetry and edge-case query audits
-4. QA hardening for new UX:
-   - automated coverage for tab reorder/persistence, deep-link pending resume, and bookmark virtualization
+1. Optional future enhancement:
+   - additional bulk-close modes beyond “close unpinned” (e.g., close left/right of active)
 
 ## Immediate Next Execution Step
 
-Add regression coverage for tab persistence/reorder, pending deep-link resume, and bookmark virtualization flows, then calibrate search relevance weights from real usage.
+No blocking items in this plan; optional enhancements can be scheduled separately.

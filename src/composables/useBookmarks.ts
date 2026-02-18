@@ -5,6 +5,7 @@ import {
   removeBookmark as removeBookmarkApi,
   repairBookmarkTarget as repairBookmarkTargetApi,
   touchBookmarkOpened as touchBookmarkOpenedApi,
+  setBookmarkFavorite as setBookmarkFavoriteApi,
   listBookmarkFolders as listBookmarkFoldersApi,
   createBookmarkFolder as createBookmarkFolderApi,
   deleteBookmarkFolder as deleteBookmarkFolderApi,
@@ -48,6 +49,10 @@ export function useBookmarks() {
     }
     return map
   })
+
+  const favoriteBookmarks = computed(() =>
+    bookmarks.value.filter((bookmark) => bookmark.isFavorite),
+  )
 
   async function loadBookmarks(projectId: string, query?: string) {
     if (!projectId) {
@@ -156,7 +161,27 @@ export function useBookmarks() {
   async function touchOpened(bookmarkId: number) {
     await touchBookmarkOpenedApi(bookmarkId)
     const bookmark = bookmarks.value.find((item) => item.id === bookmarkId)
-    if (bookmark) bookmark.lastOpenedAt = Math.floor(Date.now() / 1000)
+    if (bookmark) {
+      bookmark.lastOpenedAt = Math.floor(Date.now() / 1000)
+      bookmark.openCount = (bookmark.openCount ?? 0) + 1
+    }
+  }
+
+  async function setFavorite(bookmarkId: number, isFavorite: boolean) {
+    const updated = await setBookmarkFavoriteApi(bookmarkId, isFavorite)
+    const idx = bookmarks.value.findIndex((item) => item.id === bookmarkId)
+    if (idx >= 0) {
+      bookmarks.value[idx] = updated
+    } else {
+      bookmarks.value.unshift(updated)
+    }
+    return updated
+  }
+
+  async function toggleFavorite(bookmarkId: number) {
+    const bookmark = bookmarks.value.find((item) => item.id === bookmarkId)
+    if (!bookmark) return null
+    return setFavorite(bookmarkId, !bookmark.isFavorite)
   }
 
   async function repairTarget(
@@ -249,6 +274,7 @@ export function useBookmarks() {
     relations,
     relationByBookmarkId,
     byDocSlug,
+    favoriteBookmarks,
     loading,
     loadingManagement,
     loadBookmarks,
@@ -258,6 +284,8 @@ export function useBookmarks() {
     removeBookmark,
     toggleBookmark,
     touchOpened,
+    setFavorite,
+    toggleFavorite,
     createFolder,
     deleteFolder,
     createTag,

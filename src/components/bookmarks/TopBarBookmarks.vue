@@ -6,6 +6,7 @@ import { useCollections } from '@/composables/useCollections'
 import { useBookmarks } from '@/composables/useBookmarks'
 import { useToast } from '@/composables/useToast'
 import { openBookmarkTarget } from '@/lib/bookmarkResolver'
+import { sortBookmarksForDisplay } from '@/lib/bookmarkSort'
 
 const router = useRouter()
 const { activeProjectId } = useProjects()
@@ -19,11 +20,7 @@ const query = ref('')
 const rootRef = ref<HTMLElement | null>(null)
 
 const sortedBookmarks = computed(() =>
-  [...bookmarks.value].sort((a, b) => {
-    const aScore = a.lastOpenedAt ?? a.updatedAt
-    const bScore = b.lastOpenedAt ?? b.updatedAt
-    return bScore - aScore
-  }),
+  sortBookmarksForDisplay(bookmarks.value),
 )
 
 const filteredBookmarks = computed(() => {
@@ -145,7 +142,7 @@ onUnmounted(() => {
 <template>
   <div ref="rootRef" class="relative">
     <button
-      class="h-7 px-2.5 rounded-md text-xs font-medium transition-colors border border-border/60 bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border inline-flex items-center gap-1.5"
+      class="h-7 px-2.5 rounded-md text-xs font-medium transition-colors border border-border/55 bg-surface-secondary/35 text-text-secondary hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border inline-flex items-center gap-1.5"
       title="Bookmarks"
       @click="togglePanel"
     >
@@ -210,20 +207,30 @@ onUnmounted(() => {
             No bookmarks match this filter.
           </div>
           <div v-else class="space-y-1">
-            <button
+            <div
               v-for="bookmark in visibleBookmarks"
               :key="bookmark.id"
-              class="w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-secondary transition-colors"
-              @click="openBookmark(bookmark.id)"
+              class="w-full rounded-md px-2 py-1.5 hover:bg-surface-secondary transition-colors"
             >
-              <div class="flex items-start justify-between gap-2">
-                <p class="text-xs font-medium text-text-primary truncate">{{ bookmark.titleSnapshot }}</p>
+              <div class="flex items-start justify-between gap-2 mb-0.5">
+                <button
+                  class="min-w-0 text-left"
+                  @click="openBookmark(bookmark.id)"
+                >
+                  <p class="text-xs font-medium text-text-primary truncate">{{ bookmark.titleSnapshot }}</p>
+                </button>
                 <span class="text-[10px] text-text-secondary flex-shrink-0">{{ collectionLabel(bookmark.collectionId) }}</span>
               </div>
-              <p class="text-[11px] text-text-secondary truncate mt-0.5">
-                {{ bookmark.docSlug }}<span v-if="bookmark.anchorId">#{{ bookmark.anchorId }}</span>
-              </p>
-            </button>
+              <button
+                class="w-full text-left"
+                @click="openBookmark(bookmark.id)"
+              >
+                <p class="text-[11px] text-text-secondary truncate">
+                  {{ bookmark.docSlug }}<span v-if="bookmark.anchorId">#{{ bookmark.anchorId }}</span>
+                </p>
+                <p class="mt-0.5 text-[10px] text-text-secondary/70">Opened {{ bookmark.openCount }} times</p>
+              </button>
+            </div>
           </div>
         </div>
 

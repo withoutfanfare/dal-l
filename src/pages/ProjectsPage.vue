@@ -7,7 +7,12 @@ import type { ProjectStats, AppPreferences } from '@/lib/types'
 import AddProjectDialog from '@/components/projects/AddProjectDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { clearPendingDeepLink, getPendingDeepLink, type PendingDeepLinkTarget } from '@/lib/pendingDeepLink'
-import { docSlugWithoutCollection } from '@/lib/deepLinks'
+import { resolvePendingDeepLinkTarget } from '@/lib/pendingDeepLinkResolution'
+import {
+  dismissPendingDeepLinkAction,
+  resumePendingDeepLinkAction,
+  switchToPendingProjectAction,
+} from '@/lib/pendingDeepLinkBannerFlow'
 
 const router = useRouter()
 const { addToast } = useToast()
@@ -139,56 +144,49 @@ const pendingProjectExists = computed(() => {
 })
 
 async function resumePendingDeepLink() {
-  const pending = pendingDeepLink.value
-  if (!pending) return
-
-  const fullSlug = `${pending.collectionId}/${pending.docSlug}`
-  try {
-    const doc = await getDocument(fullSlug)
-    await router.push({
-      name: 'doc',
-      params: {
-        collection: doc.collection_id,
-        slug: docSlugWithoutCollection(doc.collection_id, doc.slug),
-      },
-      hash: pending.anchorId ? `#${pending.anchorId}` : '',
-    })
-    clearPendingDeepLink()
-    pendingDeepLink.value = null
-    return
-  } catch {
-    // Fall through to nearest candidate search.
-  }
-
-  const nearest = await searchDocuments(pending.docSlug, pending.collectionId, 1).catch(() => [])
-  if (nearest.length > 0) {
-    const doc = nearest[0]
-    await router.push({
-      name: 'doc',
-      params: {
-        collection: doc.collection_id,
-        slug: docSlugWithoutCollection(doc.collection_id, doc.slug),
-      },
-    })
-    addToast('Opened nearest available document for the pending deep link', 'info')
-    clearPendingDeepLink()
-    pendingDeepLink.value = null
-    return
-  }
-
-  addToast('Could not resolve pending deep link in the active project', 'error')
+  pendingDeepLink.value = await resumePendingDeepLinkAction(pendingDeepLink.value, {
+    resolvePending: (pending) =>
+      resolvePendingDeepLinkTarget(pending, {
+        getDocument,
+        searchDocuments,
+      }),
+    pushRoute: async (route) => {
+      await router.push({
+        name: route.name,
+        params: route.params,
+        hash: route.hash,
+      })
+    },
+    addToast,
+    clearPending: clearPendingDeepLink,
+    switchProject,
+  })
 }
 
 function dismissPendingDeepLink() {
-  clearPendingDeepLink()
-  pendingDeepLink.value = null
+  pendingDeepLink.value = dismissPendingDeepLinkAction(pendingDeepLink.value, {
+    clearPending: clearPendingDeepLink,
+  })
 }
 
 async function switchToPendingProject() {
-  const pending = pendingDeepLink.value
-  if (!pending?.projectId) return
-  await switchProject(pending.projectId)
-  await resumePendingDeepLink()
+  pendingDeepLink.value = await switchToPendingProjectAction(pendingDeepLink.value, {
+    resolvePending: (pending) =>
+      resolvePendingDeepLinkTarget(pending, {
+        getDocument,
+        searchDocuments,
+      }),
+    pushRoute: async (route) => {
+      await router.push({
+        name: route.name,
+        params: route.params,
+        hash: route.hash,
+      })
+    },
+    addToast,
+    clearPending: clearPendingDeepLink,
+    switchProject,
+  })
 }
 
 onMounted(async () => {
@@ -395,7 +393,7 @@ onMounted(async () => {
       <div class="flex items-center gap-3">
         <select
           :value="selectedPreset"
-          class="px-3 py-2 rounded-lg border border-border bg-surface-secondary/50 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent transition-colors"
+          class="ui-select text-sm"
           @change="selectedPreset = ($event.target as HTMLSelectElement).value"
         >
           <option value="">None</option>

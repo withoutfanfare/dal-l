@@ -169,7 +169,7 @@ onUnmounted(() => {
 <template>
   <div ref="rootRef" class="relative flex items-center gap-1">
     <button
-      class="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary border border-border/60 bg-surface-secondary/40 hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      class="topbar-chip-btn flex items-center justify-center w-7 h-7 rounded-md disabled:cursor-not-allowed"
       title="Back"
       :disabled="!canGoBack"
       @click="handleBack"
@@ -180,7 +180,7 @@ onUnmounted(() => {
     </button>
 
     <button
-      class="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary border border-border/60 bg-surface-secondary/40 hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      class="topbar-chip-btn flex items-center justify-center w-7 h-7 rounded-md disabled:cursor-not-allowed"
       title="Forward"
       :disabled="!canGoForward"
       @click="handleForward"
@@ -191,7 +191,8 @@ onUnmounted(() => {
     </button>
 
     <button
-      class="h-7 px-2 rounded-md text-xs font-medium transition-colors border border-border/60 bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border inline-flex items-center gap-1"
+      class="topbar-chip-btn h-7 px-2 rounded-md text-xs font-medium inline-flex items-center gap-1"
+      :data-open="recentOpen ? 'true' : 'false'"
       title="Recently viewed"
       @click="toggleRecent"
     >
@@ -202,7 +203,8 @@ onUnmounted(() => {
     </button>
 
     <button
-      class="h-7 px-2 rounded-md text-xs font-medium transition-colors border border-border/60 bg-surface-secondary/40 text-text-secondary hover:text-text-primary hover:bg-surface-secondary/70 hover:border-border inline-flex items-center gap-1"
+      class="topbar-chip-btn h-7 px-2 rounded-md text-xs font-medium inline-flex items-center gap-1"
+      :data-open="changesOpen ? 'true' : 'false'"
       title="What changed"
       @click="toggleChanges"
     >
@@ -241,7 +243,7 @@ onUnmounted(() => {
             <button
               v-for="item in recentItems"
               :key="item.docSlug"
-              class="w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-secondary transition-colors"
+              class="topbar-menu-item w-full text-left rounded-md px-2 py-1.5"
               @click="openRecentDoc(item.collectionId, item.docSlug)"
             >
               <p class="text-xs font-medium text-text-primary truncate">{{ item.title }}</p>

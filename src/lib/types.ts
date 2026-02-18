@@ -101,6 +101,8 @@ export interface Bookmark {
   updatedAt: number
   lastOpenedAt: number | null
   orderIndex: number
+  openCount: number
+  isFavorite: boolean
 }
 
 export interface BookmarkFolder {

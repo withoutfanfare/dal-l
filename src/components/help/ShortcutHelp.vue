@@ -31,6 +31,7 @@ const shortcutGroups = [
     shortcuts: [
       { keys: ['Cmd', '['], description: 'Navigate back' },
       { keys: ['Cmd', ']'], description: 'Navigate forward' },
+      { keys: ['Cmd', 'T'], description: 'Start new tab' },
       { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
       { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
     ],

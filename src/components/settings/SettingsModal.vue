@@ -212,7 +212,7 @@ onUnmounted(() => {
             <label class="block text-sm font-medium text-text-primary">Preferred Provider</label>
             <select
               :value="draft.preferred_provider ?? ''"
-              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              class="ui-select w-full text-sm"
               @change="draft.preferred_provider = ($event.target as HTMLSelectElement).value || null"
             >
               <option value="">Auto-detect</option>

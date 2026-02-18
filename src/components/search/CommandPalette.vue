@@ -17,7 +17,7 @@ import SearchEmpty from '@/components/search/SearchEmpty.vue'
 const router = useRouter()
 const route = useRoute()
 const { isOpen, close } = useCommandPalette()
-const { query, results, loading, error, collectionFilter, clearSearch } = useSearch()
+const { query, results, loading, error, collectionFilter, clearSearch, recordSelection } = useSearch()
 const { collections } = useCollections()
 const { activeProjectId } = useProjects()
 const { ensureLoaded, toggleBookmark } = useBookmarks()
@@ -36,6 +36,7 @@ function navigateToResult(index: number) {
   const result = results.value[index]
   if (!result) return
 
+  recordSelection(result)
   const slugWithoutCollection = result.slug.startsWith(result.collection_id + '/')
     ? result.slug.slice(result.collection_id.length + 1)
     : result.slug

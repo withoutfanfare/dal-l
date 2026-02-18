@@ -99,6 +99,7 @@ fn unix_timestamp_i64() -> i64 {
 }
 
 fn bookmark_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Bookmark> {
+    let is_favorite_int: i64 = row.get(11)?;
     Ok(Bookmark {
         id: row.get(0)?,
         project_id: row.get(1)?,
@@ -110,6 +111,8 @@ fn bookmark_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Bookmark> {
         updated_at: row.get(7)?,
         last_opened_at: row.get(8)?,
         order_index: row.get(9)?,
+        open_count: row.get(10)?,
+        is_favorite: is_favorite_int != 0,
     })
 }
 
@@ -639,16 +642,16 @@ pub fn list_bookmarks(
         .unwrap_or(false);
 
     let sql = if has_query {
-        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index \
+        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index, open_count, is_favorite \
          FROM bookmarks \
          WHERE project_id = ?1 AND title_snapshot LIKE ?2 \
-         ORDER BY COALESCE(last_opened_at, updated_at) DESC, created_at DESC \
+         ORDER BY is_favorite DESC, open_count DESC, COALESCE(last_opened_at, updated_at) DESC, created_at DESC \
          LIMIT ?3"
     } else {
-        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index \
+        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index, open_count, is_favorite \
          FROM bookmarks \
          WHERE project_id = ?1 \
-         ORDER BY COALESCE(last_opened_at, updated_at) DESC, created_at DESC \
+         ORDER BY is_favorite DESC, open_count DESC, COALESCE(last_opened_at, updated_at) DESC, created_at DESC \
          LIMIT ?2"
     };
 
@@ -717,8 +720,8 @@ pub fn upsert_bookmark(
         conn.execute(
             "INSERT INTO bookmarks (
                 project_id, collection_id, doc_slug, anchor_id, title_snapshot,
-                created_at, updated_at, last_opened_at, order_index
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8)",
+                created_at, updated_at, last_opened_at, order_index, open_count, is_favorite
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, 0, 0)",
             params![
                 &project_id,
                 &collection_id,
@@ -741,7 +744,7 @@ pub fn upsert_bookmark(
     };
 
     conn.query_row(
-        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index \
+        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index, open_count, is_favorite \
          FROM bookmarks WHERE id = ?1",
         params![bookmark_id],
         bookmark_from_row,
@@ -800,7 +803,7 @@ pub fn repair_bookmark_target(
     .map_err(|e| e.to_string())?;
 
     conn.query_row(
-        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index
+        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index, open_count, is_favorite
          FROM bookmarks WHERE id = ?1",
         params![bookmark_id],
         bookmark_from_row,
@@ -816,7 +819,9 @@ pub fn touch_bookmark_opened(
     let now = unix_timestamp_i64();
     let conn = user_state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "UPDATE bookmarks SET last_opened_at = ?1, updated_at = ?1 WHERE id = ?2",
+        "UPDATE bookmarks
+         SET last_opened_at = ?1, updated_at = ?1, open_count = open_count + 1
+         WHERE id = ?2",
         params![now, bookmark_id],
     )
     .map_err(|e| e.to_string())?;
@@ -826,6 +831,45 @@ pub fn touch_bookmark_opened(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_bookmark_favorite(
+    user_state: State<'_, UserStateDb>,
+    bookmark_id: i64,
+    is_favorite: bool,
+) -> Result<Bookmark, String> {
+    let now = unix_timestamp_i64();
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE bookmarks
+         SET is_favorite = ?1, updated_at = ?2
+         WHERE id = ?3",
+        params![if is_favorite { 1 } else { 0 }, now, bookmark_id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO bookmark_events (bookmark_id, event_type, created_at)
+         VALUES (?1, ?2, ?3)",
+        params![
+            bookmark_id,
+            if is_favorite {
+                "favorited"
+            } else {
+                "unfavorited"
+            },
+            now
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.query_row(
+        "SELECT id, project_id, collection_id, doc_slug, anchor_id, title_snapshot, created_at, updated_at, last_opened_at, order_index, open_count, is_favorite
+         FROM bookmarks WHERE id = ?1",
+        params![bookmark_id],
+        bookmark_from_row,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

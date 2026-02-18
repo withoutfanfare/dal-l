@@ -41,7 +41,7 @@ const segments = computed(() => {
 </script>
 
 <template>
-  <nav class="flex items-center gap-1 text-xs text-text-secondary">
+  <nav class="flex items-center gap-1.5 text-xs text-text-secondary">
     <template v-for="(segment, index) in segments" :key="index">
       <svg v-if="index > 0" class="w-3 h-3 text-text-secondary/40 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
@@ -49,7 +49,7 @@ const segments = computed(() => {
       <router-link
         v-if="segment.to"
         :to="segment.to"
-        class="hover:text-text-primary transition-colors"
+        class="rounded px-1.5 py-0.5 hover:text-text-primary hover:bg-surface-secondary/45 transition-colors"
       >
         {{ segment.label }}
       </router-link>
