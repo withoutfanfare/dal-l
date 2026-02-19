@@ -93,14 +93,6 @@ impl ProjectManager {
             .ok_or_else(|| format!("No database connection for project '{}'", project_id))
     }
 
-    /// Get the active project metadata
-    pub fn active_project(&self) -> Option<&Project> {
-        self.registry
-            .projects
-            .iter()
-            .find(|p| p.id == self.registry.active_project_id)
-    }
-
     /// Open a database connection for a project
     pub fn open_connection(
         &mut self,

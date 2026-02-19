@@ -351,16 +351,28 @@ a[aria-disabled='true'] {
 .prose table {
   font-size: 14px;
   border-collapse: collapse;
+  width: 100%;
 }
 
 .prose thead th {
   border-bottom: 2px solid var(--color-border);
   padding: 0.5rem 0.75rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .prose tbody td {
   border-bottom: 1px solid var(--color-border);
   padding: 0.5rem 0.75rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.prose th code,
+.prose td code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .prose tbody tr:last-child td {

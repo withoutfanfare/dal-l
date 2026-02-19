@@ -11,8 +11,10 @@ const tag = ref<string>('')
 const tagInfo = ref<Tag | null>(null)
 const documents = ref<SearchResult[]>([])
 const loading = ref(false)
+let requestId = 0
 
 async function fetchTagData() {
+  const thisRequest = ++requestId
   const tagParam = route.params.tag as string
   if (!tagParam) return
 
@@ -24,13 +26,18 @@ async function fetchTagData() {
       getTags(),
       getDocumentsByTag(tagParam),
     ])
+    if (thisRequest !== requestId) return
     tagInfo.value = allTags.find((t) => t.tag === tagParam) ?? null
     documents.value = docs
   } catch {
-    tagInfo.value = null
-    documents.value = []
+    if (thisRequest === requestId) {
+      tagInfo.value = null
+      documents.value = []
+    }
   } finally {
-    loading.value = false
+    if (thisRequest === requestId) {
+      loading.value = false
+    }
   }
 }
 

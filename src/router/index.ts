@@ -29,6 +29,11 @@ const router = createRouter({
       component: () => import('@/pages/TabSpringboardPage.vue'),
     },
     {
+      path: '/help',
+      name: 'help',
+      component: () => import('@/pages/HelpPage.vue'),
+    },
+    {
       path: '/:collection/:slug(.*)',
       name: 'doc',
       component: () => import('@/pages/DocPage.vue'),

@@ -13,6 +13,10 @@ function close() {
   isOpen.value = false
 }
 
+function handleOpenEvent() {
+  isOpen.value = true
+}
+
 const shortcutGroups = [
   {
     label: 'Global',
@@ -65,6 +69,7 @@ const shortcutGroups = [
 let unregister: (() => void) | null = null
 
 onMounted(() => {
+  window.addEventListener('dalil:open-shortcuts-help', handleOpenEvent)
   unregister = registerKeydownHandler(5, (e) => {
     if (isOpen.value && e.key === 'Escape') {
       e.preventDefault()
@@ -86,6 +91,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('dalil:open-shortcuts-help', handleOpenEvent)
   unregister?.()
 })
 </script>

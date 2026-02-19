@@ -44,6 +44,7 @@ const focusNoteToken = ref(0)
 let scrollContainer: HTMLElement | null = null
 let scrollRaf: number | null = null
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null
+let fetchRequestId = 0
 
 const bookmarked = computed(() => {
   if (!document.value || !activeProjectId.value) return false
@@ -179,6 +180,7 @@ onUnmounted(() => {
 })
 
 async function fetchDocument() {
+  const thisRequest = ++fetchRequestId
   const slug = Array.isArray(route.params.slug)
     ? route.params.slug.join('/')
     : route.params.slug
@@ -193,39 +195,49 @@ async function fetchDocument() {
   try {
     // Construct the full slug: collection/slug
     const fullSlug = `${collection}/${slug}`
-    document.value = await getDocument(fullSlug)
-    setActiveCollection(document.value.collection_id)
-    const relativeSlug = docSlugWithoutCollection(document.value.collection_id, document.value.slug)
+    const nextDocument = await getDocument(fullSlug)
+    if (thisRequest !== fetchRequestId) return
+
+    document.value = nextDocument
+    setActiveCollection(nextDocument.collection_id)
+    const relativeSlug = docSlugWithoutCollection(nextDocument.collection_id, nextDocument.slug)
     setTabTitle(
       activeProjectId.value || 'default',
-      document.value.collection_id,
+      nextDocument.collection_id,
       relativeSlug,
-      document.value.title,
+      nextDocument.title,
     )
     if (activeProjectId.value) {
       await ensureLoaded(activeProjectId.value)
-      const currentSnapshot = extractSectionSnapshot(document.value.content_html)
-      const previousSnapshot = loadPreviousSnapshot(activeProjectId.value, document.value.slug)
+      if (thisRequest !== fetchRequestId) return
+      const currentSnapshot = extractSectionSnapshot(nextDocument.content_html)
+      const previousSnapshot = loadPreviousSnapshot(activeProjectId.value, nextDocument.slug)
       computeCompareDiff(previousSnapshot, currentSnapshot)
-      saveCurrentSnapshot(activeProjectId.value, document.value.slug, currentSnapshot)
-      await loadDocNotes(activeProjectId.value, document.value.slug)
+      saveCurrentSnapshot(activeProjectId.value, nextDocument.slug, currentSnapshot)
+      await loadDocNotes(activeProjectId.value, nextDocument.slug)
+      if (thisRequest !== fetchRequestId) return
       noteDraft.value = note.value?.note ?? ''
       lastSavedNote.value = noteDraft.value
-      await markViewed(activeProjectId.value, document.value.slug)
+      await markViewed(activeProjectId.value, nextDocument.slug)
     } else {
       changedHeadingIds.value = []
       changedSectionTitles.value = []
       removedSectionTitles.value = []
       noteDraft.value = ''
+      lastSavedNote.value = ''
     }
 
     // Update window title
-    window.document.title = `${document.value.title} \u2014 dal\u012Bl`
+    window.document.title = `${nextDocument.title} \u2014 dal\u012Bl`
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-    document.value = null
+    if (thisRequest === fetchRequestId) {
+      error.value = e instanceof Error ? e.message : String(e)
+      document.value = null
+    }
   } finally {
-    loading.value = false
+    if (thisRequest === fetchRequestId) {
+      loading.value = false
+    }
   }
 }
 
@@ -301,16 +313,26 @@ function handleNoteChange(value: string) {
 function scheduleNoteSave() {
   if (!document.value || !activeProjectId.value) return
   if (noteDraft.value === lastSavedNote.value) return
+  const projectId = activeProjectId.value
+  const docSlug = document.value.slug
+  const nextNoteValue = noteDraft.value
   if (noteSaveTimer !== null) {
     clearTimeout(noteSaveTimer)
     noteSaveTimer = null
   }
   noteSaveTimer = setTimeout(async () => {
     if (!document.value || !activeProjectId.value) return
+    if (activeProjectId.value !== projectId || document.value.slug !== docSlug) return
     savingNote.value = true
     try {
-      await saveDocNote(activeProjectId.value, document.value.slug, noteDraft.value)
-      lastSavedNote.value = noteDraft.value
+      await saveDocNote(projectId, docSlug, nextNoteValue)
+      if (
+        activeProjectId.value === projectId
+        && document.value?.slug === docSlug
+        && noteDraft.value === nextNoteValue
+      ) {
+        lastSavedNote.value = nextNoteValue
+      }
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'Could not save note', 'error')
     } finally {
@@ -388,7 +410,13 @@ function onToggleNotesShortcut() {
 
 watch(
   () => [route.params.collection, route.params.slug],
-  () => fetchDocument(),
+  () => {
+    if (noteSaveTimer !== null) {
+      clearTimeout(noteSaveTimer)
+      noteSaveTimer = null
+    }
+    fetchDocument()
+  },
   { immediate: true },
 )
 
