@@ -7,6 +7,8 @@ import remarkGfm from 'remark-gfm'
 import remarkRehype from 'remark-rehype'
 import rehypeSlug from 'rehype-slug'
 import rehypeShiki from '@shikijs/rehype'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize from 'rehype-sanitize'
 import rehypeStringify from 'rehype-stringify'
 import config from '../dalil.config.js'
 import { extractMetadata } from './lib/extract-metadata.js'
@@ -47,6 +49,41 @@ const SHIKI_LANGS = [
   'sql',
   'diff',
 ] as const
+
+/**
+ * Build-time HTML sanitisation schema matching the frontend DOMPurify config.
+ * Defence-in-depth: even if a handbook markdown file contains malicious HTML,
+ * it is stripped before being written to SQLite.
+ */
+const buildSanitizeSchema = {
+  tagNames: [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'br', 'hr',
+    'ul', 'ol', 'li',
+    'a', 'strong', 'em', 'b', 'i', 'u', 's', 'del', 'ins',
+    'code', 'pre', 'span',
+    'blockquote', 'figure', 'figcaption',
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+    'img',
+    'mark',
+    'details', 'summary',
+    'dl', 'dt', 'dd',
+    'sup', 'sub',
+    'div',
+  ],
+  attributes: {
+    a: ['href', 'target', 'rel'],
+    img: ['src', 'alt', 'width', 'height'],
+    '*': ['className', 'id', 'tabIndex', 'ariaLabel', 'ariaHidden', 'role'],
+    td: ['colSpan', 'rowSpan'],
+    th: ['colSpan', 'rowSpan', 'scope'],
+    // Shiki generates style attributes with CSS custom properties (--shiki-light/dark)
+    code: ['className', 'style'],
+    span: ['className', 'style'],
+    pre: ['className', 'style', 'tabIndex'],
+  },
+  strip: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'textarea', 'button'],
+}
 
 function findMarkdownFiles(dir: string): string[] {
   const files: string[] = []
@@ -311,7 +348,9 @@ async function processFilesInParallel(
             defaultColor: false,
             langs: [...SHIKI_LANGS],
           })
-          .use(rehypeStringify, { allowDangerousHtml: true })
+          .use(rehypeRaw)
+          .use(rehypeSanitize, buildSanitizeSchema)
+          .use(rehypeStringify)
 
         const contentHtml = String(await fileProcessor.process(parsed.content))
 
