@@ -1,14 +1,23 @@
 import { visit } from 'unist-util-visit'
 import path from 'path'
 
+export interface BrokenLink {
+  sourceFile: string
+  line: number | null
+  targetUrl: string
+  resolvedPath: string
+}
+
 export interface ResolveLinksOptions {
   collectionId: string
   currentFilePath: string
   slugMap: Map<string, string>
+  /** Mutable array to collect broken link reports during processing. */
+  brokenLinks?: BrokenLink[]
 }
 
 export default function remarkResolveLinks(options: ResolveLinksOptions) {
-  const { collectionId, currentFilePath, slugMap } = options
+  const { collectionId, currentFilePath, slugMap, brokenLinks } = options
   const currentDir = path.dirname(currentFilePath)
   const lowerSlugMap = new Map<string, string>()
   const orderedPaths = Array.from(slugMap.keys())
@@ -82,9 +91,13 @@ export default function remarkResolveLinks(options: ResolveLinksOptions) {
       if (slug) {
         node.url = `/docs/${collectionId}/${slug}${suffix}`
       } else {
-        // Convert link to plain text and warn
+        // Collect broken link report
+        const line: number | null = node.position?.start?.line ?? null
+        if (brokenLinks) {
+          brokenLinks.push({ sourceFile: currentFilePath, line, targetUrl: url, resolvedPath: resolved })
+        }
         console.warn(
-          `[remark-resolve-links] Broken link in ${currentFilePath}: "${url}" (resolved to "${resolved}")`,
+          `[remark-resolve-links] Broken link in ${currentFilePath}${line ? `:${line}` : ''}: "${url}" → "${resolved}"`,
         )
 
         if (parent && typeof index === 'number') {

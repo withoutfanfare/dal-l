@@ -697,6 +697,149 @@ nav button:active {
   50%      { transform: translate(-30px, 30px) scale(1.1); }
 }
 
+/* ---- Print-friendly document export ---- */
+@media print {
+  /* Force light background with dark text */
+  html {
+    background: #fff !important;
+    color: #1a1a1a !important;
+    font-size: 12pt !important;
+  }
+
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Strip app chrome: sidebar, topbar, ambient blobs, right sidebar */
+  aside,
+  nav:not(.prose nav),
+  .ambient-blobs,
+  [data-tauri-drag-region],
+  [style*="no-drag"],
+  .code-copy-btn,
+  .heading-anchor,
+  button:not(.prose button) {
+    display: none !important;
+  }
+
+  /* Let content fill the page */
+  main {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+  }
+
+  /* Reset content area layout */
+  .prose {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #1a1a1a !important;
+  }
+
+  /* Clean typography for print */
+  .prose h1, .prose h2, .prose h3, .prose h4 {
+    color: #1a1a1a !important;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .prose p, .prose li {
+    color: #1a1a1a !important;
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Prevent code blocks and tables from splitting across pages */
+  .prose pre,
+  .prose table,
+  .prose blockquote,
+  .prose figure {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Code blocks: monochrome-friendly syntax highlighting */
+  .prose pre {
+    background: #f5f5f5 !important;
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+    padding: 0.75em 1em !important;
+    font-size: 10pt !important;
+    overflow-wrap: break-word !important;
+    white-space: pre-wrap !important;
+  }
+
+  .prose pre code {
+    color: #1a1a1a !important;
+  }
+
+  /* Ensure Shiki tokens print legibly */
+  .shiki span,
+  .dark .shiki span {
+    color: inherit !important;
+  }
+
+  /* Inline code */
+  .prose code:not(pre code) {
+    background: #eee !important;
+    border: 1px solid #ccc !important;
+    color: #1a1a1a !important;
+  }
+
+  /* Links: show URL after link text */
+  .prose a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    color: #555;
+    word-break: break-all;
+  }
+
+  /* Tables */
+  .prose table {
+    border-collapse: collapse !important;
+  }
+
+  .prose th,
+  .prose td {
+    border: 1px solid #999 !important;
+    padding: 0.4em 0.6em !important;
+    color: #1a1a1a !important;
+  }
+
+  /* Blockquotes */
+  .prose blockquote {
+    border-left: 3px solid #999 !important;
+    color: #333 !important;
+  }
+
+  /* Search highlights: remove background for print */
+  mark {
+    background: none !important;
+    font-weight: bold !important;
+  }
+
+  /* Hide interactive elements */
+  .prose-img-lightbox img {
+    cursor: default !important;
+  }
+
+  /* Scrollbars: hide for print */
+  * {
+    scrollbar-width: none !important;
+  }
+  ::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  /* Document title header for print */
+  @page {
+    margin: 2cm;
+  }
+}
+
 /* Reduced motion: disable animations and minimise transitions */
 @media (prefers-reduced-motion: reduce) {
   .ambient-blob {
