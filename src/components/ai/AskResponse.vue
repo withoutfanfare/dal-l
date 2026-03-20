@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue'
 import type { AiProvider } from '@/lib/types'
-import { sanitiseHtml } from '@/lib/sanitise'
+import { sanitiseAiHtml } from '@/lib/sanitise'
 import ProviderBadge from './ProviderBadge.vue'
 import { useRouter } from 'vue-router'
 import type { AiSourceReference } from '@/composables/useAI'
@@ -43,7 +43,7 @@ function renderMarkdown(text: string): string {
     html = '<p>' + html + '</p>'
   }
 
-  return sanitiseHtml(html)
+  return sanitiseAiHtml(html)
 }
 
 const renderedHtml = ref('')

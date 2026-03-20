@@ -5,15 +5,17 @@ use tauri::{AppHandle, Manager};
 pub struct HttpClient(pub reqwest::Client);
 
 /// Resolve the path to the built-in handbook database.
+///
+/// In dev mode, uses CARGO_MANIFEST_DIR (set at compile time) to reliably locate
+/// the project root regardless of the working directory the app is launched from.
+/// In release mode, reads from the Tauri resource bundle.
 pub fn handbook_db_path(app: &AppHandle) -> std::path::PathBuf {
     if cfg!(debug_assertions) {
-        // In dev mode, dalil.db is in the project root (parent of src-tauri/)
-        let mut path = std::env::current_dir().expect("Failed to get current directory");
-        if path.ends_with("src-tauri") {
-            path.pop();
-        }
-        path.push("dalil.db");
-        path
+        // CARGO_MANIFEST_DIR points to src-tauri/ at compile time — parent is project root.
+        let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("CARGO_MANIFEST_DIR has no parent directory");
+        project_root.join("dalil.db")
     } else {
         app.path()
             .resource_dir()
