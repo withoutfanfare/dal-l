@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SearchResult } from '@/lib/types'
+import { sanitiseSnippet } from '@/lib/sanitise'
 
 const props = defineProps<{
   result: SearchResult
   isSelected: boolean
 }>()
 
-// FTS5 snippets only contain <mark> tags — strip everything else without DOMPurify overhead
+// FTS5 snippets only contain <mark> tags — sanitise via DOMPurify for defence-in-depth
 const safeSnippet = computed(() => {
   if (!props.result.snippet) return ''
-  return props.result.snippet.replace(/<\/?(?!mark\b)[^>]*>/gi, '')
+  return sanitiseSnippet(props.result.snippet)
 })
 </script>
 
