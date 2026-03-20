@@ -2,7 +2,7 @@
 import { ref, computed, watch, toRef, onMounted, onUnmounted } from 'vue'
 import { useSettings } from '@/composables/useSettings'
 import { registerKeydownHandler } from '@/composables/useKeydownDispatcher'
-import { useFocusTrap } from '@/composables/useFocusTrap'
+import { useFocusTrap } from '@stuntrocket/ui'
 import ProviderConfig from './ProviderConfig.vue'
 import type { AiProvider, Settings } from '@/lib/types'
 

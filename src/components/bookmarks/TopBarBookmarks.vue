@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useProjects } from '@/composables/useProjects'
 import { useCollections } from '@/composables/useCollections'
 import { useBookmarks } from '@/composables/useBookmarks'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import { openBookmarkTarget } from '@/lib/bookmarkResolver'
 import { sortBookmarksForDisplay } from '@/lib/bookmarkSort'
 
@@ -12,7 +12,7 @@ const router = useRouter()
 const { activeProjectId } = useProjects()
 const { collections, activeCollectionId } = useCollections()
 const { bookmarks, loadBookmarks, touchOpened, loading } = useBookmarks()
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 
 const panelOpen = ref(false)
 const scope = ref<'all' | 'active'>('all')

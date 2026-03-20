@@ -6,7 +6,10 @@ import { getDocument, listProjects, searchDocuments, setActiveProject } from '@/
 import { docSlugWithoutCollection, parseDeepLink } from '@/lib/deepLinks'
 import { clearPendingDeepLink, setPendingDeepLink } from '@/lib/pendingDeepLink'
 import './style.css'
-import './composables/useTheme'
+import { useTheme } from '@stuntrocket/ui'
+
+// Initialise theme on app load (applies .dark class based on persisted preference)
+useTheme('dalil-theme-mode')
 
 createApp(App).use(router).mount('#app')
 

@@ -166,6 +166,28 @@ export interface ProjectChangeFeedItem {
   recordedAt: number
 }
 
+export interface RelatedDocument {
+  slug: string
+  title: string
+  collectionId: string
+  collectionName: string
+  relevance: string
+}
+
+export interface FtsConsistencyResult {
+  consistent: boolean
+  documentCount: number
+  ftsCount: number
+  mismatchedSamples: string[]
+  message: string
+}
+
+export interface CollectionProgress {
+  collectionId: string
+  totalDocuments: number
+  viewedDocuments: number
+}
+
 export type AiProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
 
 export interface Settings {

@@ -10,23 +10,56 @@ import { useBookmarks } from '@/composables/useBookmarks'
 import { useDocActivity } from '@/composables/useDocActivity'
 import { useDocNotes } from '@/composables/useDocNotes'
 import { useDocTabs } from '@/composables/useDocTabs'
-import { useToast } from '@/composables/useToast'
+import { useNavigation } from '@/composables/useNavigation'
+import { SBreadcrumbs, useToastStack } from '@stuntrocket/ui'
+import type { BreadcrumbSegment } from '@stuntrocket/ui'
 import ContentHeader from '@/components/content/ContentHeader.vue'
 import DocumentView from '@/components/content/DocumentView.vue'
-import Breadcrumbs from '@/components/content/Breadcrumbs.vue'
 import DocRightSidebar from '@/components/content/DocRightSidebar.vue'
+import RelatedDocuments from '@/components/content/RelatedDocuments.vue'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
 
 const route = useRoute()
 const router = useRouter()
-const { setActiveCollection } = useCollections()
+const { activeCollection, setActiveCollection } = useCollections()
 const { previousDoc, nextDoc } = useSequentialNavigation()
 const { activeProjectId } = useProjects()
 const { ensureLoaded, toggleBookmark, isBookmarked, byDocSlug, removeBookmark } = useBookmarks()
 const { markViewed } = useDocActivity()
 const { note, highlights, load: loadDocNotes, save: saveDocNote, addHighlight, removeHighlight } = useDocNotes()
 const { setTabTitle } = useDocTabs()
-const { addToast } = useToast()
+const { findSectionSlug } = useNavigation()
+const { addToast } = useToastStack()
+
+const breadcrumbSegments = computed<BreadcrumbSegment[]>(() => {
+  const doc = document.value
+  if (!doc) return []
+
+  const crumbs: BreadcrumbSegment[] = []
+
+  if (activeCollection.value) {
+    crumbs.push({
+      label: activeCollection.value.name,
+      to: `/${doc.collection_id}`,
+    })
+  }
+
+  if (doc.section) {
+    const sectionSlug = findSectionSlug(doc.section)
+    const fallbackParent = doc.parent_slug?.trim()
+    const targetSlug = sectionSlug ?? (fallbackParent && fallbackParent !== doc.slug ? fallbackParent : null)
+    crumbs.push({
+      label: doc.section,
+      to: targetSlug ? `/${doc.collection_id}/${targetSlug}` : `/${doc.collection_id}`,
+    })
+  }
+
+  crumbs.push({
+    label: doc.title,
+  })
+
+  return crumbs
+})
 
 const document = ref<Document | null>(null)
 const loading = ref(false)
@@ -488,7 +521,7 @@ watch(noteDraft, () => {
 
       <!-- Document -->
       <template v-else-if="document">
-        <Breadcrumbs :document="document" class="mb-3 px-1" />
+        <SBreadcrumbs :segments="breadcrumbSegments" class="mb-3 px-1" @navigate="router.push($event)" />
         <ContentHeader
           :document="document"
           @share-link="handleShareLink"
@@ -514,6 +547,9 @@ watch(noteDraft, () => {
           :compare-mode="compareModeEnabled"
           :changed-heading-ids="changedHeadingIds"
         />
+
+        <!-- Related documents -->
+        <RelatedDocuments :slug="document.slug" />
 
         <!-- Next/Previous navigation -->
         <nav

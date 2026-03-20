@@ -205,6 +205,34 @@ impl Settings {
     }
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedDocument {
+    pub slug: String,
+    pub title: String,
+    pub collection_id: String,
+    pub collection_name: String,
+    pub relevance: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FtsConsistencyResult {
+    pub consistent: bool,
+    pub document_count: i32,
+    pub fts_count: i32,
+    pub mismatched_samples: Vec<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionProgress {
+    pub collection_id: String,
+    pub total_documents: i32,
+    pub viewed_documents: i32,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AiProvider {

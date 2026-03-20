@@ -5,7 +5,7 @@ import { useProjects } from '@/composables/useProjects'
 import { getProjectStats, openInEditor, getPreferences, savePreferences, getDocument, searchDocuments } from '@/lib/api'
 import type { ProjectStats, AppPreferences } from '@/lib/types'
 import AddProjectDialog from '@/components/projects/AddProjectDialog.vue'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import { clearPendingDeepLink, getPendingDeepLink, type PendingDeepLinkTarget } from '@/lib/pendingDeepLink'
 import { resolvePendingDeepLinkTarget } from '@/lib/pendingDeepLinkResolution'
 import {
@@ -15,7 +15,7 @@ import {
 } from '@/lib/pendingDeepLinkBannerFlow'
 
 const router = useRouter()
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 const { projects, activeProject, buildStatus, rebuildProject, removeProject, switchProject } = useProjects()
 
 const stats = ref<Map<string, ProjectStats>>(new Map())

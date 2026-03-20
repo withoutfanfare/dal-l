@@ -2,6 +2,8 @@
 import ProjectSwitcher from './ProjectSwitcher.vue'
 import CollectionSwitcher from './CollectionSwitcher.vue'
 import SidebarSection from './SidebarSection.vue'
+import SourceChangeBanner from './SourceChangeBanner.vue'
+import CollectionProgressBadges from './CollectionProgressBadges.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import { useSidebar } from '@/composables/useSidebar'
 import { useNavigation } from '@/composables/useNavigation'
@@ -27,6 +29,12 @@ const { collections } = useCollections()
     <div v-if="collections.length > 1" class="px-3 pb-1" style="-webkit-app-region: no-drag">
       <CollectionSwitcher />
     </div>
+
+    <!-- Source change detection (dev mode only) -->
+    <SourceChangeBanner />
+
+    <!-- Collection reading progress -->
+    <CollectionProgressBadges />
 
     <!-- Navigation tree -->
     <nav class="flex-1 overflow-y-auto px-2.5 py-1.5" style="-webkit-app-region: no-drag">

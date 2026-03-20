@@ -847,6 +847,578 @@ pub fn bulk_set_bookmark_tags(
     Ok(())
 }
 
+// -- Related documents (cross-collection FTS similarity) --
+
+#[tauri::command]
+pub fn get_related_documents(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    slug: String,
+    limit: Option<i32>,
+) -> Result<Vec<crate::models::RelatedDocument>, String> {
+    let limit = limit.unwrap_or(5).clamp(1, 10);
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
+
+    // Get current document's title and tags for similarity search
+    let doc_info: Option<(String, String, String)> = conn
+        .query_row(
+            "SELECT title, collection_id, slug FROM documents WHERE slug = ?1",
+            params![&slug],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let (doc_title, _doc_collection_id, _doc_slug) = match doc_info {
+        Some(info) => info,
+        None => return Ok(vec![]),
+    };
+
+    // Get document's tags
+    let mut tag_stmt = conn
+        .prepare_cached(
+            "SELECT t.tag FROM tags t
+             JOIN document_tags dt ON dt.tag_id = t.id
+             JOIN documents d ON d.id = dt.document_id
+             WHERE d.slug = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let doc_tags: Vec<String> = tag_stmt
+        .query_map(params![&slug], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Build collection name lookup
+    let mut collection_names: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    {
+        let mut coll_stmt = conn
+            .prepare_cached("SELECT id, name FROM collections")
+            .map_err(|e| e.to_string())?;
+        let rows = coll_stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (id, name) = row.map_err(|e| e.to_string())?;
+            collection_names.insert(id, name);
+        }
+    }
+
+    let mut results: Vec<crate::models::RelatedDocument> = Vec::new();
+    let mut seen_slugs = std::collections::HashSet::new();
+    seen_slugs.insert(slug.clone());
+
+    // Strategy 1: Documents sharing tags (highest relevance)
+    if !doc_tags.is_empty() {
+        let placeholders = doc_tags
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 2))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT d.slug, d.title, d.collection_id, COUNT(DISTINCT t.tag) as shared_tags
+             FROM documents d
+             JOIN document_tags dt ON dt.document_id = d.id
+             JOIN tags t ON t.id = dt.tag_id
+             WHERE t.tag IN ({}) AND d.slug != ?1
+             GROUP BY d.slug
+             ORDER BY shared_tags DESC
+             LIMIT 10",
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+
+        let mut param_values: Vec<rusqlite::types::Value> = vec![];
+        param_values.push(rusqlite::types::Value::Text(slug.clone()));
+        for tag in &doc_tags {
+            param_values.push(rusqlite::types::Value::Text(tag.clone()));
+        }
+
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(param_values.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+
+        for row in rows {
+            let (related_slug, title, collection_id) = row.map_err(|e| e.to_string())?;
+            if seen_slugs.contains(&related_slug) {
+                continue;
+            }
+            seen_slugs.insert(related_slug.clone());
+            let collection_name = collection_names
+                .get(&collection_id)
+                .cloned()
+                .unwrap_or_default();
+            results.push(crate::models::RelatedDocument {
+                slug: related_slug,
+                title,
+                collection_id,
+                collection_name,
+                relevance: "shared tags".to_string(),
+            });
+        }
+    }
+
+    // Strategy 2: FTS similarity using title keywords
+    if results.len() < limit as usize {
+        let keywords = doc_title
+            .split_whitespace()
+            .filter(|w| w.len() >= 3)
+            .take(4)
+            .map(|w| {
+                let clean: String = w.chars().filter(|c| *c != '"').collect();
+                format!("\"{}\"", clean)
+            })
+            .collect::<Vec<_>>();
+
+        if !keywords.is_empty() {
+            let fts_query = keywords.join(" OR ");
+            let remaining = (limit as usize).saturating_sub(results.len());
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT d.slug, d.title, d.collection_id
+                     FROM documents_fts
+                     JOIN documents d ON d.id = documents_fts.rowid
+                     WHERE documents_fts MATCH ?1 AND d.slug != ?2
+                     ORDER BY rank
+                     LIMIT ?3",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let rows = stmt
+                .query_map(
+                    params![fts_query, &slug, (remaining + 5) as i32],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+
+            for row in rows {
+                if results.len() >= limit as usize {
+                    break;
+                }
+                let (related_slug, title, collection_id) = row.map_err(|e| e.to_string())?;
+                if seen_slugs.contains(&related_slug) {
+                    continue;
+                }
+                seen_slugs.insert(related_slug.clone());
+                let collection_name = collection_names
+                    .get(&collection_id)
+                    .cloned()
+                    .unwrap_or_default();
+                results.push(crate::models::RelatedDocument {
+                    slug: related_slug,
+                    title,
+                    collection_id,
+                    collection_name,
+                    relevance: "similar content".to_string(),
+                });
+            }
+        }
+    }
+
+    results.truncate(limit as usize);
+    Ok(results)
+}
+
+// -- FTS consistency verification --
+
+#[tauri::command]
+pub fn verify_fts_consistency(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+) -> Result<crate::models::FtsConsistencyResult, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
+
+    let document_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .unwrap_or(0);
+    let fts_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM documents_fts", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    let mut mismatched_samples: Vec<String> = Vec::new();
+
+    if document_count == fts_count {
+        // Spot-check: sample up to 10 random documents and verify they exist in FTS
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT d.id, d.title FROM documents d
+                 ORDER BY RANDOM() LIMIT 10",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let samples = stmt
+            .query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+
+        for (doc_id, doc_title) in samples {
+            let fts_exists: i32 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM documents_fts WHERE rowid = ?1",
+                    params![doc_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            if fts_exists == 0 {
+                mismatched_samples.push(doc_title);
+            }
+        }
+    }
+
+    let consistent = document_count == fts_count && mismatched_samples.is_empty();
+    let message = if consistent {
+        format!(
+            "FTS index is consistent: {} documents, {} FTS entries",
+            document_count, fts_count
+        )
+    } else if document_count != fts_count {
+        format!(
+            "FTS index inconsistent: {} documents but {} FTS entries",
+            document_count, fts_count
+        )
+    } else {
+        format!(
+            "FTS index inconsistent: {} documents missing from index",
+            mismatched_samples.len()
+        )
+    };
+
+    Ok(crate::models::FtsConsistencyResult {
+        consistent,
+        document_count,
+        fts_count,
+        mismatched_samples,
+        message,
+    })
+}
+
+// -- Rebuild FTS index --
+
+#[tauri::command]
+pub fn rebuild_fts_index(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+) -> Result<String, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.active_connection()?;
+
+    // Repopulate FTS from documents table
+    conn.execute("DELETE FROM documents_fts", [])
+        .map_err(|e| format!("Failed to clear FTS index: {}", e))?;
+
+    conn.execute(
+        "INSERT INTO documents_fts(rowid, title, content_text)
+         SELECT id, title, content_html FROM documents",
+        [],
+    )
+    .map_err(|e| format!("Failed to rebuild FTS index: {}", e))?;
+
+    let count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM documents_fts", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    Ok(format!("FTS index rebuilt with {} entries", count))
+}
+
+// -- Collection reading progress --
+
+#[tauri::command]
+pub fn get_collection_progress(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    user_state: State<'_, UserStateDb>,
+    project_id: String,
+) -> Result<Vec<crate::models::CollectionProgress>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.connection(&project_id)?;
+
+    // Get total document count per collection
+    let mut total_stmt = conn
+        .prepare_cached(
+            "SELECT collection_id, COUNT(*) FROM documents GROUP BY collection_id",
+        )
+        .map_err(|e| e.to_string())?;
+    let totals = total_stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Get all viewed doc slugs for this project
+    let viewed_slugs: std::collections::HashSet<String> = {
+        let user_conn = user_state.0.lock().map_err(|e| e.to_string())?;
+        let mut stmt = user_conn
+            .prepare_cached(
+                "SELECT doc_slug FROM doc_views WHERE project_id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![&project_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<std::collections::HashSet<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
+
+    // For each collection, count how many viewed slugs belong to it
+    let mut results = Vec::new();
+    for (collection_id, total_documents) in totals {
+        let mut viewed_count = 0i32;
+        let mut doc_stmt = conn
+            .prepare_cached(
+                "SELECT slug FROM documents WHERE collection_id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let slugs = doc_stmt
+            .query_map(params![&collection_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for slug_result in slugs {
+            let slug = slug_result.map_err(|e| e.to_string())?;
+            if viewed_slugs.contains(&slug) {
+                viewed_count += 1;
+            }
+        }
+        results.push(crate::models::CollectionProgress {
+            collection_id,
+            total_documents,
+            viewed_documents: viewed_count,
+        });
+    }
+
+    Ok(results)
+}
+
+// -- Scroll position persistence --
+
+#[tauri::command]
+pub fn save_scroll_position(
+    user_state: State<'_, UserStateDb>,
+    project_id: String,
+    doc_slug: String,
+    scroll_top: f64,
+) -> Result<(), String> {
+    let now = unix_timestamp_i64();
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO scroll_positions (project_id, doc_slug, scroll_top, updated_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(project_id, doc_slug)
+         DO UPDATE SET scroll_top = excluded.scroll_top, updated_at = excluded.updated_at",
+        params![project_id, doc_slug, scroll_top, now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_scroll_position(
+    user_state: State<'_, UserStateDb>,
+    project_id: String,
+    doc_slug: String,
+) -> Result<Option<f64>, String> {
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    conn.query_row(
+        "SELECT scroll_top FROM scroll_positions
+         WHERE project_id = ?1 AND doc_slug = ?2",
+        params![project_id, doc_slug],
+        |row| row.get::<_, f64>(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+// -- Source change detection --
+
+#[tauri::command]
+pub fn check_source_changes(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    project_id: String,
+) -> Result<Option<String>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let project = mgr
+        .registry
+        .projects
+        .iter()
+        .find(|p| p.id == project_id)
+        .ok_or_else(|| format!("Project '{}' not found", project_id))?;
+
+    if project.built_in {
+        return Ok(None);
+    }
+
+    let source_path = match &project.source_path {
+        Some(path) => path.clone(),
+        None => return Ok(None),
+    };
+
+    let last_built_epoch = project
+        .last_built
+        .as_ref()
+        .and_then(|ts| ts.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    // Walk the source directory for .md files modified after last_built
+    let source_dir = std::path::Path::new(&source_path);
+    if !source_dir.exists() || !source_dir.is_dir() {
+        return Ok(None);
+    }
+
+    let mut changed_count = 0u32;
+    let mut latest_modified: Option<String> = None;
+
+    fn walk_dir(
+        dir: &std::path::Path,
+        since: u64,
+        changed_count: &mut u32,
+        latest: &mut Option<String>,
+    ) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk_dir(&path, since, changed_count, latest);
+            } else if path
+                .extension()
+                .map(|e| e == "md")
+                .unwrap_or(false)
+            {
+                if let Ok(metadata) = std::fs::metadata(&path) {
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(epoch) = modified.duration_since(std::time::UNIX_EPOCH) {
+                            if epoch.as_secs() > since {
+                                *changed_count += 1;
+                                let filename = path
+                                    .file_name()
+                                    .map(|f| f.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+                                *latest = Some(filename);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    walk_dir(source_dir, last_built_epoch, &mut changed_count, &mut latest_modified);
+
+    if changed_count > 0 {
+        let message = if changed_count == 1 {
+            format!(
+                "1 source file changed: {}",
+                latest_modified.unwrap_or_default()
+            )
+        } else {
+            format!("{} source files changed since last build", changed_count)
+        };
+        Ok(Some(message))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub fn get_build_timestamp(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    project_id: String,
+) -> Result<Option<String>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let project = mgr
+        .registry
+        .projects
+        .iter()
+        .find(|p| p.id == project_id)
+        .ok_or_else(|| format!("Project '{}' not found", project_id))?;
+    Ok(project.last_built.clone())
+}
+
+// -- Mark all documents read / reset progress for a collection --
+
+#[tauri::command]
+pub fn mark_collection_all_read(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    user_state: State<'_, UserStateDb>,
+    project_id: String,
+    collection_id: String,
+) -> Result<(), String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.connection(&project_id)?;
+    let now = unix_timestamp_i64();
+
+    let mut stmt = conn
+        .prepare_cached("SELECT slug FROM documents WHERE collection_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let slugs: Vec<String> = stmt
+        .query_map(params![&collection_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let user_conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    for slug in slugs {
+        user_conn
+            .execute(
+                "INSERT INTO doc_views (project_id, doc_slug, last_viewed_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(project_id, doc_slug)
+                 DO UPDATE SET last_viewed_at = excluded.last_viewed_at",
+                params![&project_id, &slug, now],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reset_collection_progress(
+    manager: State<'_, std::sync::Mutex<crate::projects::ProjectManager>>,
+    user_state: State<'_, UserStateDb>,
+    project_id: String,
+    collection_id: String,
+) -> Result<(), String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let conn = mgr.connection(&project_id)?;
+
+    let mut stmt = conn
+        .prepare_cached("SELECT slug FROM documents WHERE collection_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let slugs: Vec<String> = stmt
+        .query_map(params![&collection_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let user_conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    for slug in slugs {
+        user_conn
+            .execute(
+                "DELETE FROM doc_views WHERE project_id = ?1 AND doc_slug = ?2",
+                params![&project_id, &slug],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn highlight_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocHighlight> {
     Ok(DocHighlight {
         id: row.get(0)?,
