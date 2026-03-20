@@ -13,7 +13,7 @@ import rehypeStringify from 'rehype-stringify'
 import config from '../dalil.config.js'
 import { extractMetadata } from './lib/extract-metadata.js'
 import { parseFrontmatter } from './lib/parse-frontmatter.js'
-import remarkResolveLinks from './lib/remark-resolve-links.js'
+import remarkResolveLinks, { type BrokenLink } from './lib/remark-resolve-links.js'
 import { buildNavigation, type DocInfo } from './lib/build-navigation.js'
 import { chunkContent } from './lib/chunk-content.js'
 import {
@@ -263,7 +263,7 @@ function readBuildCounts(db: ReturnType<typeof createDatabase>) {
   return { docCount, chunkCount, embeddingCount, tagCount, navCount }
 }
 
-function printBuildSummary(db: ReturnType<typeof createDatabase>) {
+function printBuildSummary(db: ReturnType<typeof createDatabase>, brokenLinks: BrokenLink[]) {
   const { docCount, chunkCount, embeddingCount, tagCount, navCount } = readBuildCounts(db)
   console.log('\n  Summary:')
   console.log(`  Documents: ${docCount}`)
@@ -271,6 +271,18 @@ function printBuildSummary(db: ReturnType<typeof createDatabase>) {
   console.log(`  Embeddings: ${embeddingCount}`)
   console.log(`  Tags: ${tagCount}`)
   console.log(`  Navigation nodes: ${navCount}`)
+  if (brokenLinks.length > 0) {
+    console.log(`  Broken links: ${brokenLinks.length}`)
+  }
+}
+
+function printBrokenLinksSummary(brokenLinks: BrokenLink[]) {
+  if (brokenLinks.length === 0) return
+  console.log(`\n  ⚠ ${brokenLinks.length} broken internal link${brokenLinks.length === 1 ? '' : 's'} found:`)
+  for (const link of brokenLinks) {
+    const location = link.line ? `${link.sourceFile}:${link.line}` : link.sourceFile
+    console.log(`    ${location} → "${link.targetUrl}"`)
+  }
 }
 
 async function maybeBackfillEmbeddingsForFreshDatabase(): Promise<boolean> {
@@ -318,6 +330,7 @@ async function processFilesInParallel(
   collection: Collection,
   metadataCache: Map<string, DocumentMetadata>,
   slugMap: Map<string, string>,
+  brokenLinks: BrokenLink[],
 ): Promise<ProcessedFile[]> {
   const results: ProcessedFile[] = []
   let processedCount = 0
@@ -340,6 +353,7 @@ async function processFilesInParallel(
             collectionId: collection.id,
             currentFilePath: metadata.relativePath,
             slugMap,
+            brokenLinks,
           })
           .use(remarkRehype, { allowDangerousHtml: true })
           .use(rehypeSlug)
@@ -376,6 +390,7 @@ async function processCollection(
   collection: Collection,
   collectionIndex: number,
   db: ReturnType<typeof createDatabase>,
+  brokenLinks: BrokenLink[],
 ) {
   const sourceDir = collection.source
 
@@ -424,6 +439,7 @@ async function processCollection(
     collection,
     metadataCache,
     slugMap,
+    brokenLinks,
   )
   console.log(`  Processed ${processedFiles.length}/${deduped.length} files`)
 
@@ -532,6 +548,7 @@ function parseCliArgs(): { source: string; output: string; collectionId: string;
 
 async function main() {
   const cliArgs = parseCliArgs()
+  const strictFlag = process.argv.includes('--strict')
 
   if (cliArgs) {
     // CLI/sidecar mode: build a single collection from CLI arguments
@@ -546,12 +563,13 @@ async function main() {
       source: cliArgs.source,
     }
 
+    const brokenLinks: BrokenLink[] = []
     const db = createDatabase(cliArgs.output)
 
     try {
       db.exec('BEGIN')
       try {
-        await processCollection(collection, 0, db)
+        await processCollection(collection, 0, db, brokenLinks)
         db.exec('COMMIT')
       } catch (err) {
         db.exec('ROLLBACK')
@@ -564,18 +582,14 @@ async function main() {
         console.warn(`  Warning: failed to generate embeddings: ${String(error)}`)
       }
 
-      const docCount = (db.prepare('SELECT count(*) as count FROM documents').get() as { count: number }).count
-      const chunkCount = (db.prepare('SELECT count(*) as count FROM chunks').get() as { count: number }).count
-      const embeddingCount = (db.prepare('SELECT count(*) as count FROM chunk_embeddings').get() as { count: number }).count
-      const tagCount = (db.prepare('SELECT count(*) as count FROM tags').get() as { count: number }).count
-      const navCount = (db.prepare('SELECT count(*) as count FROM navigation_tree').get() as { count: number }).count
+      printBuildSummary(db, brokenLinks)
+      printBrokenLinksSummary(brokenLinks)
 
-      console.log('\n  Summary:')
-      console.log(`  Documents: ${docCount}`)
-      console.log(`  Chunks: ${chunkCount}`)
-      console.log(`  Embeddings: ${embeddingCount}`)
-      console.log(`  Tags: ${tagCount}`)
-      console.log(`  Navigation nodes: ${navCount}`)
+      if (strictFlag && brokenLinks.length > 0) {
+        console.error(`\n  Build failed: ${brokenLinks.length} broken link${brokenLinks.length === 1 ? '' : 's'} found (--strict mode)`)
+        process.exit(1)
+      }
+
       console.log('\n  Done!')
     } finally {
       db.close()
@@ -599,13 +613,14 @@ async function main() {
   console.log(`Database: ${DB_PATH}`)
   console.log(`Collections: ${config.collections.length}`)
 
+  const brokenLinks: BrokenLink[] = []
   const db = createDatabase(DB_PATH)
 
   try {
     db.exec('BEGIN')
     try {
       for (let i = 0; i < config.collections.length; i++) {
-        await processCollection(config.collections[i], i, db)
+        await processCollection(config.collections[i], i, db, brokenLinks)
       }
       db.exec('COMMIT')
     } catch (err) {
@@ -619,7 +634,14 @@ async function main() {
       console.warn(`  Warning: failed to generate embeddings: ${String(error)}`)
     }
 
-    printBuildSummary(db)
+    printBuildSummary(db, brokenLinks)
+    printBrokenLinksSummary(brokenLinks)
+
+    if (strictFlag && brokenLinks.length > 0) {
+      console.error(`\n  Build failed: ${brokenLinks.length} broken link${brokenLinks.length === 1 ? '' : 's'} found (--strict mode)`)
+      process.exit(1)
+    }
+
     console.log('\n  Done!')
   } finally {
     db.close()
