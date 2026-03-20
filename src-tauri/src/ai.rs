@@ -699,6 +699,27 @@ pub(crate) struct AiChatMessage {
     content: String,
 }
 
+/// Flush accumulated content as a single batched event to reduce IPC overhead.
+/// Returns true if the emit succeeded.
+fn flush_content_batch(
+    app: &AppHandle,
+    request_id: &str,
+    batch: &mut String,
+) -> bool {
+    if batch.is_empty() {
+        return true;
+    }
+    let content = std::mem::take(batch);
+    app.emit(
+        "ai-response-chunk",
+        AiResponseChunkEvent {
+            request_id: request_id.to_string(),
+            content,
+        },
+    )
+    .is_ok()
+}
+
 // -- Streaming chat --
 
 /// Stream a chat response from the configured provider via Tauri events.
@@ -756,18 +777,20 @@ async fn stream_openai(
     let mut stream = resp.bytes_stream();
 
     let mut buffer = String::new();
+    let mut content_batch = String::new();
 
     'outer: while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-        // Process complete SSE lines
+        // Process complete SSE lines, accumulating content within this network chunk
         while let Some(line_end) = buffer.find('\n') {
             let line: String = buffer.drain(..=line_end).collect();
             let line = line.trim();
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
+                    flush_content_batch(app, request_id, &mut content_batch);
                     if let Err(e) = app.emit(
                         "ai-response-done",
                         AiResponseDoneEvent {
@@ -783,21 +806,15 @@ async fn stream_openai(
 
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                     if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
-                        if app
-                            .emit(
-                                "ai-response-chunk",
-                                AiResponseChunkEvent {
-                                    request_id: request_id.to_string(),
-                                    content: content.to_string(),
-                                },
-                            )
-                            .is_err()
-                        {
-                            break 'outer;
-                        }
+                        content_batch.push_str(content);
                     }
                 }
             }
+        }
+
+        // Flush the accumulated batch from this network chunk as a single event
+        if !flush_content_batch(app, request_id, &mut content_batch) {
+            break 'outer;
         }
 
         if is_cancelled(request_id) {
@@ -815,6 +832,7 @@ async fn stream_openai(
         }
     }
 
+    flush_content_batch(app, request_id, &mut content_batch);
     if let Err(e) = app.emit(
         "ai-response-done",
         AiResponseDoneEvent {
@@ -887,6 +905,7 @@ async fn stream_anthropic(
     use futures_util::StreamExt;
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
+    let mut content_batch = String::new();
 
     'outer: while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
@@ -903,21 +922,11 @@ async fn stream_anthropic(
                     match event_type {
                         "content_block_delta" => {
                             if let Some(text) = parsed["delta"]["text"].as_str() {
-                                if app
-                                    .emit(
-                                        "ai-response-chunk",
-                                        AiResponseChunkEvent {
-                                            request_id: request_id.to_string(),
-                                            content: text.to_string(),
-                                        },
-                                    )
-                                    .is_err()
-                                {
-                                    break 'outer;
-                                }
+                                content_batch.push_str(text);
                             }
                         }
                         "message_stop" => {
+                            flush_content_batch(app, request_id, &mut content_batch);
                             if let Err(e) = app.emit(
                                 "ai-response-done",
                                 AiResponseDoneEvent {
@@ -936,6 +945,11 @@ async fn stream_anthropic(
             }
         }
 
+        // Flush the accumulated batch from this network chunk
+        if !flush_content_batch(app, request_id, &mut content_batch) {
+            break 'outer;
+        }
+
         if is_cancelled(request_id) {
             if let Err(e) = app.emit(
                 "ai-response-done",
@@ -951,6 +965,7 @@ async fn stream_anthropic(
         }
     }
 
+    flush_content_batch(app, request_id, &mut content_batch);
     if let Err(e) = app.emit(
         "ai-response-done",
         AiResponseDoneEvent {
@@ -1008,6 +1023,7 @@ async fn stream_ollama(
     use futures_util::StreamExt;
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
+    let mut content_batch = String::new();
 
     'outer: while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
@@ -1023,21 +1039,11 @@ async fn stream_ollama(
 
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
                 if let Some(content) = parsed["message"]["content"].as_str() {
-                    if app
-                        .emit(
-                            "ai-response-chunk",
-                            AiResponseChunkEvent {
-                                request_id: request_id.to_string(),
-                                content: content.to_string(),
-                            },
-                        )
-                        .is_err()
-                    {
-                        break 'outer;
-                    }
+                    content_batch.push_str(content);
                 }
 
                 if parsed["done"].as_bool() == Some(true) {
+                    flush_content_batch(app, request_id, &mut content_batch);
                     if let Err(e) = app.emit(
                         "ai-response-done",
                         AiResponseDoneEvent {
@@ -1051,6 +1057,11 @@ async fn stream_ollama(
                     return Ok(());
                 }
             }
+        }
+
+        // Flush the accumulated batch from this network chunk
+        if !flush_content_batch(app, request_id, &mut content_batch) {
+            break 'outer;
         }
 
         if is_cancelled(request_id) {
@@ -1068,6 +1079,7 @@ async fn stream_ollama(
         }
     }
 
+    flush_content_batch(app, request_id, &mut content_batch);
     if let Err(e) = app.emit(
         "ai-response-done",
         AiResponseDoneEvent {
@@ -1138,6 +1150,7 @@ async fn stream_gemini(
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
     let mut emitted_text = String::new();
+    let mut content_batch = String::new();
 
     'outer: while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
@@ -1149,6 +1162,7 @@ async fn stream_gemini(
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
+                    flush_content_batch(app, request_id, &mut content_batch);
                     if let Err(e) = app.emit(
                         "ai-response-done",
                         AiResponseDoneEvent {
@@ -1173,22 +1187,16 @@ async fn stream_gemini(
                         };
                         if !delta.is_empty() {
                             emitted_text.push_str(&delta);
-                            if app
-                                .emit(
-                                    "ai-response-chunk",
-                                    AiResponseChunkEvent {
-                                        request_id: request_id.to_string(),
-                                        content: delta,
-                                    },
-                                )
-                                .is_err()
-                            {
-                                break 'outer;
-                            }
+                            content_batch.push_str(&delta);
                         }
                     }
                 }
             }
+        }
+
+        // Flush the accumulated batch from this network chunk
+        if !flush_content_batch(app, request_id, &mut content_batch) {
+            break 'outer;
         }
 
         if is_cancelled(request_id) {
@@ -1206,6 +1214,7 @@ async fn stream_gemini(
         }
     }
 
+    flush_content_batch(app, request_id, &mut content_batch);
     if let Err(e) = app.emit(
         "ai-response-done",
         AiResponseDoneEvent {

@@ -112,6 +112,22 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
             recorded_at INTEGER NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS scroll_positions (
+            project_id TEXT NOT NULL,
+            doc_slug TEXT NOT NULL,
+            scroll_top REAL NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY(project_id, doc_slug)
+        );
+
+        CREATE TABLE IF NOT EXISTS dismissed_related (
+            project_id TEXT NOT NULL,
+            doc_slug TEXT NOT NULL,
+            related_slug TEXT NOT NULL,
+            dismissed_at INTEGER NOT NULL,
+            PRIMARY KEY(project_id, doc_slug, related_slug)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_bookmarks_project_updated
             ON bookmarks(project_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_bookmarks_project_doc_anchor

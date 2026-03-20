@@ -188,13 +188,6 @@ export interface CollectionProgress {
   viewedDocuments: number
 }
 
-export interface ScrollPosition {
-  projectId: string
-  docSlug: string
-  scrollTop: number
-  updatedAt: number
-}
-
 export type AiProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
 
 export interface Settings {

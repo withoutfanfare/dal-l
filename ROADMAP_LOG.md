@@ -127,3 +127,21 @@
 - **Items archived:**
   - [Performance] Parallelise markdown build pipeline (P3, M) — developer-facing build optimisation with no user-visible impact; current build times acceptable for handbook sizes in use
 - **Observations:** Added one item and archived one to maintain the 15-item threshold. The keyboard shortcut overlay (P2, S) fills a surprising gap — Dalil has the most comprehensive keyboard support of any app in the portfolio (useKeyboardNavigation, useKeyboard composables covering document traversal, search, sidebar, theme) but these shortcuts are completely undiscoverable. Every other app has keyboard shortcut documentation planned or implemented; Dalil should lead by example. The archived build pipeline parallelisation (P3, M) was a developer-facing optimisation with no user impact — build times are acceptable at current handbook sizes, and the content-hash skip optimisation (the most valuable part) could be extracted as a standalone item if needed. Dalil remains at 15 pending items (13 functional + 2 shared component library). The shared component library extraction (P1, XL) remains the portfolio-critical dependency. The code block copy button (P2, S), in-document TOC (P2, S), and keyboard shortcut overlay (P2, S) form a strong trio of small items for daily handbook usage improvement.
+
+## Cycle: 2026-03-20 23:00
+- **Items completed:**
+  - [Performance] Optimise AI streaming response rendering (P2, M)
+  - [Feature] Add bookmark and reading progress tracking (P2, M)
+  - [UX/UI] Add in-document table of contents for long pages (P2, S)
+  - [Feature] Add cross-collection related content suggestions (P3, M)
+  - [Distribution] Add handbook source change detection with rebuild prompting (P2, S)
+  - [UX/UI] Add document breadcrumb navigation (P2, S)
+  - [Feature] Add multi-collection search scope selector (P3, S)
+  - [Quality] Add FTS index consistency verification on database load (P2, S)
+  - [UX/UI] Add collection-level reading progress indicators (P3, S)
+  - [UX/UI] Add code block copy-to-clipboard button (P2, S)
+  - [Feature] Add recently viewed documents list (P2, S)
+  - [UX/UI] Add keyboard shortcut help overlay (P2, S)
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Massive execution cycle clearing 12 pending functional items. Several items were already implemented on the main branch (bookmarks, TOC, copy button, recents, breadcrumbs, search scope, keyboard shortcuts) and needed only roadmap status updates. Five items required new implementation: AI streaming optimisation (Rust-side content batching across all four providers plus 120ms frontend debounce), cross-collection related documents (new Rust command with tag-sharing and FTS similarity strategies, RelatedDocuments Vue component), FTS consistency verification (new Rust command with row count + spot-check, FtsHealthBanner component on HomePage), collection reading progress (new Rust command + CollectionProgressBadges sidebar component), and source change detection (new Rust command polling source dir modification times + SourceChangeBanner sidebar component). Scroll position persistence added to SQLite via new scroll_positions table. Dalil now has only 1 pending functional item (AI summarisation, skipped as it depends on AI provider configuration) plus 2 shared component library items.

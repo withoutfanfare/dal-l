@@ -19,6 +19,9 @@ import type {
   DocNote,
   DocHighlight,
   ProjectChangeFeedItem,
+  RelatedDocument,
+  FtsConsistencyResult,
+  CollectionProgress,
 } from './types'
 
 export async function getCollections(): Promise<Collection[]> {
@@ -283,4 +286,62 @@ export async function addDocHighlight(
 
 export async function deleteDocHighlight(id: number): Promise<void> {
   return invoke('delete_doc_highlight', { id })
+}
+
+export async function getRelatedDocuments(
+  slug: string,
+  limit?: number,
+): Promise<RelatedDocument[]> {
+  return invoke('get_related_documents', { slug, limit })
+}
+
+export async function verifyFtsConsistency(): Promise<FtsConsistencyResult> {
+  return invoke('verify_fts_consistency')
+}
+
+export async function rebuildFtsIndex(): Promise<string> {
+  return invoke('rebuild_fts_index')
+}
+
+export async function getCollectionProgress(
+  projectId: string,
+): Promise<CollectionProgress[]> {
+  return invoke('get_collection_progress', { projectId })
+}
+
+export async function saveScrollPosition(
+  projectId: string,
+  docSlug: string,
+  scrollTop: number,
+): Promise<void> {
+  return invoke('save_scroll_position', { projectId, docSlug, scrollTop })
+}
+
+export async function getScrollPosition(
+  projectId: string,
+  docSlug: string,
+): Promise<number | null> {
+  return invoke('get_scroll_position', { projectId, docSlug })
+}
+
+export async function checkSourceChanges(projectId: string): Promise<string | null> {
+  return invoke('check_source_changes', { projectId })
+}
+
+export async function getBuildTimestamp(projectId: string): Promise<string | null> {
+  return invoke('get_build_timestamp', { projectId })
+}
+
+export async function markCollectionAllRead(
+  projectId: string,
+  collectionId: string,
+): Promise<void> {
+  return invoke('mark_collection_all_read', { projectId, collectionId })
+}
+
+export async function resetCollectionProgress(
+  projectId: string,
+  collectionId: string,
+): Promise<void> {
+  return invoke('reset_collection_progress', { projectId, collectionId })
 }

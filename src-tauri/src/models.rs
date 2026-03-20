@@ -233,15 +233,6 @@ pub struct CollectionProgress {
     pub viewed_documents: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ScrollPosition {
-    pub project_id: String,
-    pub doc_slug: String,
-    pub scroll_top: f64,
-    pub updated_at: i64,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AiProvider {

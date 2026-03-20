@@ -18,13 +18,12 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - Verified with test payloads containing `<script>`, `onerror`, and `javascript:` vectors
   - Release database path resolution bug also fixed (audit item)
 
-## Pending
-
 ### [Performance] Optimise AI streaming response rendering
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** The AI Q&A panel re-renders the entire response on every streaming character, causing visible jank and high CPU usage during long answers. Buffering chunks and using incremental DOM updates would keep the UI responsive during streaming, especially for complex markdown responses with code blocks.
 - **Acceptance criteria:**
   - Streaming response rendering batched (e.g. every 50ms or per-line) rather than per-character
@@ -37,7 +36,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Engineering handbooks are dense reference material that users revisit over multiple sessions. Without bookmarks or reading progress, users must manually navigate back to where they left off each time. Saving scroll position per document and letting users bookmark important sections would significantly improve the reference workflow for engineers using dalil as their daily handbook tool.
 - **Acceptance criteria:**
   - Reading position (scroll offset) saved automatically per document and restored on return
@@ -50,7 +50,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Many handbook pages contain dozens of sections with deep heading hierarchies. Without a table of contents, users must scroll through the entire page to find a specific section. A sticky, auto-generated TOC derived from the heading structure would provide quick in-page navigation, especially valuable for long reference pages and API documentation.
 - **Acceptance criteria:**
   - TOC auto-generated from h2/h3/h4 headings in the current document
@@ -63,7 +64,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P3 (nice-to-have)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Users often need to cross-reference between handbooks — a DevOps runbook might relate to an architecture decision record, or a testing guide might complement an API reference. Surfacing related documents from other collections based on shared tags, similar content, or explicit links would help users discover relevant material they might otherwise miss.
 - **Acceptance criteria:**
   - "Related" section at the bottom of each document page showing up to 5 related documents
@@ -72,24 +74,12 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - Related content fetched asynchronously (does not block page render)
   - Users can dismiss irrelevant suggestions (dismissed state persisted)
 
-### [Innovation] Add AI-powered page summarisation for long handbook documents
-- **Priority:** P3 (nice-to-have)
-- **Size:** M (1-3hrs)
-- **Added:** 2026-03-19
-- **Status:** pending
-- **Description:** Many engineering handbook pages are dense multi-thousand-word references that take significant time to parse. Leveraging the existing AI infrastructure (RAG pipeline, provider configuration) to generate a concise summary at the top of long documents would help engineers quickly determine if a page contains what they need before committing to a full read. This is especially valuable for onboarding engineers encountering unfamiliar handbooks.
-- **Acceptance criteria:**
-  - "Summarise" button or auto-summary section available on documents exceeding a configurable length threshold (default: 1500 words)
-  - Summary generated using the configured AI provider and displayed in a collapsible panel at the top of the document
-  - Summary cached in the database to avoid repeated API calls for the same document version
-  - Cache invalidated when document content hash changes (handbook rebuild)
-  - Summary generation is on-demand (not automatic) to respect API usage and user preference
-
 ### [Distribution] Add handbook source change detection with rebuild prompting
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** The handbook database is built from markdown source files via `npm run build:handbook`, but there is no mechanism to detect when source files have changed since the last build. Users editing handbook content must remember to rebuild manually — if they forget, the app serves stale content without any indication. File system watching on the configured source directories with a notification prompting rebuild would eliminate this silent staleness.
 - **Acceptance criteria:**
   - File watcher monitors all collection source directories defined in dalil.config.ts
@@ -102,7 +92,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** When navigating deep into a handbook collection, users lose context about where they are in the hierarchy — the sidebar highlights the current document but the content area provides no orientation. A breadcrumb trail above the document content (e.g. "DevOps Handbook > Deployment > Blue-Green Strategy") showing the collection name and parent path would help users maintain spatial awareness, especially when arriving at a page via search or a cross-collection link rather than sidebar navigation.
 - **Acceptance criteria:**
   - Breadcrumb displayed above document title showing: collection name > parent path segments > current document
@@ -115,7 +106,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P3 (nice-to-have)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** When multiple handbook collections are loaded (e.g. architecture guides, API references, runbooks), the search bar searches across all of them simultaneously. For users who know which collection contains the information they need, this produces noisy results from irrelevant collections. A scope selector (dropdown or toggle pills) in the search interface that lets users restrict queries to one or more specific collections would improve search precision and reduce result scanning time, especially for installations with many large handbooks.
 - **Acceptance criteria:**
   - Search scope selector available in the search UI (dropdown or toggle pills showing loaded collections)
@@ -129,7 +121,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-21
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** The FTS5 search index is populated during the build pipeline and lives alongside the documents table in dalil.db. If a build is interrupted, the database is modified outside the app, or a migration introduces inconsistency, the FTS index can become desynchronised from the documents table — causing search to return stale or missing results with no indication to the user. Verifying FTS consistency on database load (row count match, spot-check sampling) and offering a one-click rebuild when issues are detected would prevent silent search failures.
 - **Acceptance criteria:**
   - On database load, verify FTS row count matches documents table row count
@@ -143,7 +136,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P3 (nice-to-have)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-21
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Engineers working through handbook collections (onboarding material, architecture guides, runbook sets) have no sense of how much of a collection they have covered. Tracking which documents have been viewed per collection and displaying a simple progress indicator (e.g. "12 of 34 pages read") in the sidebar collection list would help users gauge their coverage and identify unread material, especially valuable during structured onboarding programmes.
 - **Acceptance criteria:**
   - Per-document "viewed" flag set when a document is opened (scroll position > 0 for at least 5 seconds)
@@ -157,7 +151,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Engineering handbooks are dense with code snippets, CLI commands, configuration examples, and API payloads that developers need to copy into their terminals or editors. The current workflow requires manually selecting text within a code block — fiddly on long blocks and error-prone when lines wrap. A "Copy" button positioned at the top-right corner of each code block (matching the convention established by GitHub, MDN, and Docusaurus) would make the most common interaction with handbook content a single click. The Shiki syntax highlighting pipeline already wraps code blocks in identifiable containers, making button injection straightforward.
 - **Acceptance criteria:**
   - Copy button appears on hover at the top-right corner of every `<pre><code>` block
@@ -171,7 +166,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Engineers typically consult the same handful of handbook pages daily — the deployment runbook, the API authentication guide, the database naming conventions. Each visit currently requires navigating the sidebar tree or running a search. A "Recently Viewed" section in the sidebar (showing the last 10-15 documents visited, ordered by most recent) would provide instant access to frequently referenced material without any navigation effort, matching the pattern established by VS Code's recent files and browser history.
 - **Acceptance criteria:**
   - "Recently Viewed" section visible in the sidebar below the collection tree (collapsible)
@@ -186,7 +182,8 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Dalil has extensive keyboard navigation implemented through composables (useKeyboardNavigation, useKeyboard) supporting document traversal, search focus, sidebar toggle, and theme switching — but these shortcuts are completely undiscoverable. There is no visual documentation within the app showing which keys do what. A Cmd+/ overlay listing all available shortcuts (grouped by context: navigation, search, content) would make the keyboard-driven workflow accessible to new users and serve as a reference for power users. Every other app in the portfolio has keyboard shortcut documentation planned or implemented; Dalil — which has the most comprehensive keyboard support — lacks it.
 - **Acceptance criteria:**
   - Cmd+/ toggles a modal overlay listing all available keyboard shortcuts
@@ -195,6 +192,21 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - Overlay dismissible via Escape, Cmd+/, or clicking outside
   - Overlay styled consistently with the existing Scooda design (modal pattern, correct z-index)
   - Shortcuts list generated from the actual composable registrations (not a hardcoded separate list)
+
+## Pending
+
+### [Innovation] Add AI-powered page summarisation for long handbook documents
+- **Priority:** P3 (nice-to-have)
+- **Size:** M (1-3hrs)
+- **Added:** 2026-03-19
+- **Status:** pending
+- **Description:** Many engineering handbook pages are dense multi-thousand-word references that take significant time to parse. Leveraging the existing AI infrastructure (RAG pipeline, provider configuration) to generate a concise summary at the top of long documents would help engineers quickly determine if a page contains what they need before committing to a full read. This is especially valuable for onboarding engineers encountering unfamiliar handbooks.
+- **Acceptance criteria:**
+  - "Summarise" button or auto-summary section available on documents exceeding a configurable length threshold (default: 1500 words)
+  - Summary generated using the configured AI provider and displayed in a collapsible panel at the top of the document
+  - Summary cached in the database to avoid repeated API calls for the same document version
+  - Cache invalidated when document content hash changes (handbook rebuild)
+  - Summary generation is on-demand (not automatic) to respect API usage and user preference
 
 ## Shared Component Library
 

@@ -134,6 +134,16 @@ pub fn run() {
             commands::add_doc_highlight,
             commands::delete_doc_highlight,
             commands::cancel_ai_request,
+            commands::get_related_documents,
+            commands::verify_fts_consistency,
+            commands::rebuild_fts_index,
+            commands::get_collection_progress,
+            commands::save_scroll_position,
+            commands::get_scroll_position,
+            commands::check_source_changes,
+            commands::get_build_timestamp,
+            commands::mark_collection_all_read,
+            commands::reset_collection_progress,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

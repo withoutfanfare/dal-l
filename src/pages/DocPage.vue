@@ -16,6 +16,7 @@ import type { BreadcrumbSegment } from '@stuntrocket/ui'
 import ContentHeader from '@/components/content/ContentHeader.vue'
 import DocumentView from '@/components/content/DocumentView.vue'
 import DocRightSidebar from '@/components/content/DocRightSidebar.vue'
+import RelatedDocuments from '@/components/content/RelatedDocuments.vue'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
 
 const route = useRoute()
@@ -546,6 +547,9 @@ watch(noteDraft, () => {
           :compare-mode="compareModeEnabled"
           :changed-heading-ids="changedHeadingIds"
         />
+
+        <!-- Related documents -->
+        <RelatedDocuments :slug="document.slug" />
 
         <!-- Next/Previous navigation -->
         <nav
