@@ -8,7 +8,7 @@ import { useKeyboardNavigation } from '@/composables/useKeyboardNavigation'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import { useBookmarks } from '@/composables/useBookmarks'
 import { useProjects } from '@/composables/useProjects'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import { buildDeepLink } from '@/lib/deepLinks'
 import { getDocument } from '@/lib/api'
 import SearchResultItem from '@/components/search/SearchResult.vue'
@@ -21,7 +21,7 @@ const { query, results, loading, error, collectionFilter, clearSearch, recordSel
 const { collections } = useCollections()
 const { activeProjectId } = useProjects()
 const { ensureLoaded, toggleBookmark } = useBookmarks()
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 
 const showCollectionFilters = computed(() => collections.value.length > 1)
 

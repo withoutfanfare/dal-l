@@ -89,3 +89,41 @@
   - [UX/UI] Add configurable reading preferences for content display (P3, S)
 - **Items archived:** none
 - **Observations:** Added one small item targeting the daily reading experience. Engineers using Dalil as a reference tool spend extended sessions reading dense content, but have no way to adjust font size, content width, or line spacing for comfort. This leverages the existing Tauri store settings infrastructure and affects only the content area. Dalil is now at 13 pending items (11 functional + 2 shared component library). Seven completed items show the strongest execution velocity in the portfolio. The shared component library extraction (P1, XL) remains the portfolio-critical dependency. The P2 cluster (AI streaming, bookmarks, change detection, Q&A history, keyboard shortcuts) is the strongest functional batch.
+
+## Cycle: 2026-03-21 08:00
+- **Items added:**
+  - [Quality] Add FTS index consistency verification on database load (P2, S)
+  - [UX/UI] Add collection-level reading progress indicators (P3, S)
+- **Items archived:** none
+- **Observations:** Dalil continues to show the strongest execution velocity — the only app with significant completed work. The two additions fill the Quality category gap (no pending quality items after XSS completion) and enhance the reading experience. FTS consistency verification (P2, S) addresses a real risk: interrupted builds or external database modifications can desynchronise the search index, causing silent search failures — a critical issue for a tool whose value depends on reliable search. Collection reading progress (P3, S) supports structured handbook consumption during onboarding. Dalil is now at 11 pending items (9 functional + 2 shared component library). The shared component library extraction (P1, XL) remains the portfolio-critical dependency blocking all other apps' design system adoption.
+
+## Cycle: 2026-03-20 20:00
+- **Items added:**
+  - [UX/UI] Add document breadcrumb navigation showing collection and parent path (P2, S)
+  - [Feature] Add multi-collection search scope selector for targeted queries (P3, S)
+- **Items archived:** none
+- **Observations:** Added two small items targeting navigation and search precision. Breadcrumb navigation (P2, S) addresses a spatial awareness gap — users arriving at documents via search or cross-collection links lose context about where they are in the handbook hierarchy. The search scope selector (P3, S) improves search precision for installations with multiple loaded handbooks, allowing users to restrict queries to a specific collection rather than wading through results from all collections. Both are lightweight (S) and build on existing data structures. Dalil is now at 13 pending items (11 functional + 2 shared component library). The shared component library extraction (P1, XL) remains the portfolio-critical dependency. The P2 functional cluster (AI streaming, bookmarks, change detection, FTS consistency, breadcrumbs) is the strongest next batch.
+
+## Cycle: 2026-03-21 14:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Dalil is at 15 pending items (13 functional + 2 shared component library) — at the rebalancing threshold. The shared component library extraction (P1, XL) remains the portfolio-critical dependency blocking all other apps' design system adoption. The P2 functional cluster (AI streaming, bookmarks, change detection, FTS consistency, breadcrumbs, code copy, recents) provides strong options for parallel work alongside the library extraction. Dalil's execution velocity has been the strongest in the portfolio and it should continue to lead. No additions until execution reduces the pending count.
+
+## Cycle: 2026-03-20 08:14
+- **Items added:**
+  - [UX/UI] Add code block copy-to-clipboard button (P2, S)
+  - [Feature] Add recently viewed documents list for quick navigation (P2, S)
+- **Items archived:** none
+- **Observations:** Re-added two high-value items that were previously completed then lost during ROADMAP regeneration. The code block copy button (P2, S) is arguably the most impactful small item for a handbook tool — developers copy code snippets, CLI commands, and config examples constantly, and the current select-and-copy workflow is error-prone. The recently viewed list (P2, S) addresses the most common navigation pattern for reference material. Both are standard features in every documentation tool and conspicuously absent. Dalīl is now at 15 pending items (13 functional + 2 shared component library) — at the rebalancing threshold. Seven completed items demonstrate the strongest execution velocity in the portfolio. The shared component library extraction (P1, XL) remains the portfolio-critical dependency blocking all other apps' design system adoption. The P2 cluster (AI streaming, bookmarks, change detection, FTS consistency, breadcrumbs, code copy, recents) provides strong options for parallel work.
+
+## Cycle: 2026-03-20 22:30
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Dalīl remains at 15 pending items (13 functional + 2 shared component library) — at the rebalancing threshold. No new completions since last cycle. The shared component library extraction (P1, XL) remains the portfolio-critical dependency — every other app's Design System Foundation item is blocked on this work. Reviewed P3 items for archival: parallelise build pipeline (M), cross-collection suggestions (M), AI summarisation (M), search scope selector (S), collection progress (S) — all retain value for a handbook tool used daily. The code block copy button (P2, S) and in-document TOC (P2, S) remain the highest-impact small items for daily handbook usage. No additions until execution reduces the pending count.
+
+## Cycle: 2026-03-20 20:30
+- **Items added:**
+  - [UX/UI] Add keyboard shortcut help overlay (P2, S)
+- **Items archived:**
+  - [Performance] Parallelise markdown build pipeline (P3, M) — developer-facing build optimisation with no user-visible impact; current build times acceptable for handbook sizes in use
+- **Observations:** Added one item and archived one to maintain the 15-item threshold. The keyboard shortcut overlay (P2, S) fills a surprising gap — Dalil has the most comprehensive keyboard support of any app in the portfolio (useKeyboardNavigation, useKeyboard composables covering document traversal, search, sidebar, theme) but these shortcuts are completely undiscoverable. Every other app has keyboard shortcut documentation planned or implemented; Dalil should lead by example. The archived build pipeline parallelisation (P3, M) was a developer-facing optimisation with no user impact — build times are acceptable at current handbook sizes, and the content-hash skip optimisation (the most valuable part) could be extracted as a standalone item if needed. Dalil remains at 15 pending items (13 functional + 2 shared component library). The shared component library extraction (P1, XL) remains the portfolio-critical dependency. The code block copy button (P2, S), in-document TOC (P2, S), and keyboard shortcut overlay (P2, S) form a strong trio of small items for daily handbook usage improvement.

@@ -33,19 +33,6 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - HTTP client reused across AI requests (not recreated per request)
   - Final rendered output identical to current behaviour
 
-### [Performance] Parallelise markdown build pipeline
-- **Priority:** P3 (nice-to-have)
-- **Size:** M (1-3hrs)
-- **Added:** 2026-03-19
-- **Status:** pending
-- **Description:** The handbook build step processes markdown files sequentially and loads all 343 Shiki languages despite only using 7. Build times could be significantly reduced by parallelising file processing, loading only required languages, and batching database inserts into a single transaction (currently 88 separate transactions).
-- **Acceptance criteria:**
-  - Markdown files processed in parallel (worker pool or Promise.all with concurrency limit)
-  - Shiki bundler configured to include only languages actually used in handbooks
-  - All database inserts batched into a single transaction per build
-  - Content-hash-based skip: unchanged files not reprocessed on rebuild
-  - Build time reduced by at least 40% for a typical handbook set
-
 ### [Feature] Add bookmark and reading progress tracking
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
@@ -111,6 +98,104 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - Build timestamp displayed in the UI (settings or footer) for reference
   - Watcher active during tauri dev mode; no watcher needed in production builds (DB is bundled)
 
+### [UX/UI] Add document breadcrumb navigation showing collection and parent path
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** When navigating deep into a handbook collection, users lose context about where they are in the hierarchy — the sidebar highlights the current document but the content area provides no orientation. A breadcrumb trail above the document content (e.g. "DevOps Handbook > Deployment > Blue-Green Strategy") showing the collection name and parent path would help users maintain spatial awareness, especially when arriving at a page via search or a cross-collection link rather than sidebar navigation.
+- **Acceptance criteria:**
+  - Breadcrumb displayed above document title showing: collection name > parent path segments > current document
+  - Each breadcrumb segment is clickable, navigating to that level in the sidebar
+  - Breadcrumb derived from the document's slug and collection metadata (no additional database queries)
+  - Breadcrumb hidden on the home page and collection root pages (where it would be redundant)
+  - Styled subtly (small text, muted colour) to avoid competing with the document title
+
+### [Feature] Add multi-collection search scope selector for targeted queries
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** When multiple handbook collections are loaded (e.g. architecture guides, API references, runbooks), the search bar searches across all of them simultaneously. For users who know which collection contains the information they need, this produces noisy results from irrelevant collections. A scope selector (dropdown or toggle pills) in the search interface that lets users restrict queries to one or more specific collections would improve search precision and reduce result scanning time, especially for installations with many large handbooks.
+- **Acceptance criteria:**
+  - Search scope selector available in the search UI (dropdown or toggle pills showing loaded collections)
+  - Default scope: "All collections" (current behaviour preserved)
+  - Selected scope persisted for the session (reset on app restart)
+  - FTS query filtered by collection ID when a specific scope is selected
+  - Search result count updates to reflect scoped results
+  - Scope selection does not add perceptible latency to search queries
+
+### [Quality] Add FTS index consistency verification on database load
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-21
+- **Status:** pending
+- **Description:** The FTS5 search index is populated during the build pipeline and lives alongside the documents table in dalil.db. If a build is interrupted, the database is modified outside the app, or a migration introduces inconsistency, the FTS index can become desynchronised from the documents table — causing search to return stale or missing results with no indication to the user. Verifying FTS consistency on database load (row count match, spot-check sampling) and offering a one-click rebuild when issues are detected would prevent silent search failures.
+- **Acceptance criteria:**
+  - On database load, verify FTS row count matches documents table row count
+  - Spot-check 10 random documents to confirm FTS content matches document content
+  - If inconsistency detected, display a warning banner with "Rebuild search index" action
+  - Rebuild action repopulates the FTS table from the documents table (not a full handbook rebuild)
+  - Verification completes within 200ms for databases with 500+ documents
+  - Verification result logged for debugging (not shown to user unless inconsistency found)
+
+### [UX/UI] Add collection-level reading progress indicators
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-21
+- **Status:** pending
+- **Description:** Engineers working through handbook collections (onboarding material, architecture guides, runbook sets) have no sense of how much of a collection they have covered. Tracking which documents have been viewed per collection and displaying a simple progress indicator (e.g. "12 of 34 pages read") in the sidebar collection list would help users gauge their coverage and identify unread material, especially valuable during structured onboarding programmes.
+- **Acceptance criteria:**
+  - Per-document "viewed" flag set when a document is opened (scroll position > 0 for at least 5 seconds)
+  - Collection sidebar items display progress badge (e.g. "12/34" or percentage bar)
+  - Unread documents visually distinguishable in the navigation tree (subtle indicator, not disruptive)
+  - Progress data persisted in the SQLite database (not localStorage)
+  - "Mark all as read" and "Reset progress" actions available per collection
+  - Progress tracking does not affect search ranking or document ordering
+
+### [UX/UI] Add code block copy-to-clipboard button
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** Engineering handbooks are dense with code snippets, CLI commands, configuration examples, and API payloads that developers need to copy into their terminals or editors. The current workflow requires manually selecting text within a code block — fiddly on long blocks and error-prone when lines wrap. A "Copy" button positioned at the top-right corner of each code block (matching the convention established by GitHub, MDN, and Docusaurus) would make the most common interaction with handbook content a single click. The Shiki syntax highlighting pipeline already wraps code blocks in identifiable containers, making button injection straightforward.
+- **Acceptance criteria:**
+  - Copy button appears on hover at the top-right corner of every `<pre><code>` block
+  - Click copies the raw code content (without line numbers or syntax highlighting markup) to the system clipboard
+  - Brief visual confirmation on copy (button text changes to "Copied" or checkmark icon for 1.5 seconds)
+  - Button does not interfere with text selection within the code block
+  - Works correctly for both inline code fences and multi-line code blocks
+  - Styled subtly to avoid visual clutter when not hovered
+
+### [Feature] Add recently viewed documents list for quick navigation
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** Engineers typically consult the same handful of handbook pages daily — the deployment runbook, the API authentication guide, the database naming conventions. Each visit currently requires navigating the sidebar tree or running a search. A "Recently Viewed" section in the sidebar (showing the last 10-15 documents visited, ordered by most recent) would provide instant access to frequently referenced material without any navigation effort, matching the pattern established by VS Code's recent files and browser history.
+- **Acceptance criteria:**
+  - "Recently Viewed" section visible in the sidebar below the collection tree (collapsible)
+  - Shows last 15 documents visited, ordered by most recent first
+  - Each entry shows document title and collection name
+  - Click navigates directly to the document
+  - Duplicates collapsed (re-visiting moves to top, doesn't create a second entry)
+  - Recent list persisted in the SQLite database (not localStorage) across sessions
+  - "Clear recents" action available
+
+### [UX/UI] Add keyboard shortcut help overlay
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** Dalil has extensive keyboard navigation implemented through composables (useKeyboardNavigation, useKeyboard) supporting document traversal, search focus, sidebar toggle, and theme switching — but these shortcuts are completely undiscoverable. There is no visual documentation within the app showing which keys do what. A Cmd+/ overlay listing all available shortcuts (grouped by context: navigation, search, content) would make the keyboard-driven workflow accessible to new users and serve as a reference for power users. Every other app in the portfolio has keyboard shortcut documentation planned or implemented; Dalil — which has the most comprehensive keyboard support — lacks it.
+- **Acceptance criteria:**
+  - Cmd+/ toggles a modal overlay listing all available keyboard shortcuts
+  - Shortcuts grouped by context: navigation (sidebar, documents), search, content (scroll, TOC), app (theme, settings)
+  - Each shortcut shows the key combination and a brief description
+  - Overlay dismissible via Escape, Cmd+/, or clicking outside
+  - Overlay styled consistently with the existing Scooda design (modal pattern, correct z-index)
+  - Shortcuts list generated from the actual composable registrations (not a hardcoded separate list)
+
 ## Shared Component Library
 
 Dalil is the reference implementation of the Scooda design system. These items extract its UI components into the @stuntrocket/ui shared package so all Tauri applications can achieve visual uniformity.
@@ -149,3 +234,12 @@ Dalil is the reference implementation of the Scooda design system. These items e
   - Build succeeds with @stuntrocket/ui as the sole UI component source
   - No increase in bundle size beyond 5% (shared package should tree-shake well)
   - Dalil's app-specific components (handbook viewer, AI panel, search) remain local — only generic UI primitives come from the shared package
+
+## Archived
+
+### [Performance] Parallelise markdown build pipeline
+- **Priority:** P3 (nice-to-have)
+- **Size:** M (1-3hrs)
+- **Added:** 2026-03-19
+- **Archived:** 2026-03-20
+- **Reason:** Developer-facing build optimisation with no user-visible impact. Current build times are acceptable for the handbook sizes in use. The content-hash skip optimisation (part of this item's criteria) would deliver the most value and could be extracted as a standalone item if build times become problematic. Revisit when handbook collections exceed 500 documents.

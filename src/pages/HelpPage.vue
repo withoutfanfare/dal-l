@@ -2,9 +2,9 @@
 import type { Document } from '@/lib/types'
 import ContentHeader from '@/components/content/ContentHeader.vue'
 import DocumentView from '@/components/content/DocumentView.vue'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 
 const helpHtml = `
   <h2 id="getting-started">Getting started</h2>

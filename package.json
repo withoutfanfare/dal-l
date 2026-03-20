@@ -14,6 +14,7 @@
     "release:mac": "bash scripts/release-macos.sh"
   },
   "dependencies": {
+    "@stuntrocket/ui": "^0.7.0",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-deep-link": "^2.4.7",
     "@tauri-apps/plugin-dialog": "^2.6.0",

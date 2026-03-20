@@ -5,18 +5,17 @@ import CommandPalette from '@/components/search/CommandPalette.vue'
 import AskPanel from '@/components/ai/AskPanel.vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
 import UpdateNotification from '@/components/UpdateNotification.vue'
-import Toast from '@/components/ui/Toast.vue'
 import ShortcutHelp from '@/components/help/ShortcutHelp.vue'
 import { useSettings } from '@/composables/useSettings'
 import { useUpdater } from '@/composables/useUpdater'
 import { isFeatureEnabled } from '@/lib/featureFlags'
-import { useToast } from '@/composables/useToast'
+import { SToastContainer, useToastStack } from '@stuntrocket/ui'
 
 const settingsOpen = ref(false)
 const showAiPanel = isFeatureEnabled('aiPanel')
 const { loadSettings } = useSettings()
 const { checkForUpdate } = useUpdater()
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 
 function openSettings() {
   settingsOpen.value = true
@@ -48,5 +47,5 @@ onUnmounted(() => {
   <SettingsModal v-if="showAiPanel" :open="settingsOpen" @close="settingsOpen = false" />
   <UpdateNotification />
   <ShortcutHelp />
-  <Toast />
+  <SToastContainer />
 </template>

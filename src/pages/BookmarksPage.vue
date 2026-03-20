@@ -5,7 +5,7 @@ import { useProjects } from '@/composables/useProjects'
 import { useBookmarks } from '@/composables/useBookmarks'
 import { useCollections } from '@/composables/useCollections'
 import { docSlugWithoutCollection } from '@/lib/deepLinks'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import { openBookmarkTarget } from '@/lib/bookmarkResolver'
 import { computeVirtualRange } from '@/lib/virtualList'
 import { sortBookmarksForDisplay } from '@/lib/bookmarkSort'
@@ -33,7 +33,7 @@ const {
   bulkSetTags,
   repairTarget,
 } = useBookmarks()
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 
 const search = ref('')
 const selectedBookmarkIds = ref<number[]>([])

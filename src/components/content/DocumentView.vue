@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { open } from '@tauri-apps/plugin-shell'
 import type { Document } from '@/lib/types'
 import { sanitiseHtml } from '@/lib/sanitise'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import { useProjects } from '@/composables/useProjects'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
 import ImageLightbox from './ImageLightbox.vue'
@@ -15,7 +15,7 @@ const props = defineProps<{
   changedHeadingIds?: string[]
 }>()
 
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 const { activeProjectId } = useProjects()
 
 // Lightbox state

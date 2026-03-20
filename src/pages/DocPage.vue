@@ -10,7 +10,7 @@ import { useBookmarks } from '@/composables/useBookmarks'
 import { useDocActivity } from '@/composables/useDocActivity'
 import { useDocNotes } from '@/composables/useDocNotes'
 import { useDocTabs } from '@/composables/useDocTabs'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import ContentHeader from '@/components/content/ContentHeader.vue'
 import DocumentView from '@/components/content/DocumentView.vue'
 import Breadcrumbs from '@/components/content/Breadcrumbs.vue'
@@ -26,7 +26,7 @@ const { ensureLoaded, toggleBookmark, isBookmarked, byDocSlug, removeBookmark } 
 const { markViewed } = useDocActivity()
 const { note, highlights, load: loadDocNotes, save: saveDocNote, addHighlight, removeHighlight } = useDocNotes()
 const { setTabTitle } = useDocTabs()
-const { addToast } = useToast()
+const { addToast } = useToastStack()
 
 const document = ref<Document | null>(null)
 const loading = ref(false)
