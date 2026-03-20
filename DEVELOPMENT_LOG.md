@@ -12,5 +12,5 @@
 - Items attempted but failed: none
 - Branch: feature/copy-button-link-validation-search-snippets
 - Tests passing: yes (cargo check clean, cargo clippy clean excluding pre-existing warnings, vue-tsc clean, vite build clean)
-- Build status: pending
+- Build status: success (Dalil.app + DMG bundled, copied to ~/Desktop/TauriBuilds/dalil/)
 - Notes: First development cycle for Dalil. Discovery phase revealed that 4 of the originally-selected roadmap items were already fully implemented on the main branch but not marked as completed. Roadmap updated to reflect actual state. The two items implemented this cycle are build-pipeline and CSS changes respectively — no Rust backend modifications needed.
