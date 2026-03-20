@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useTheme } from '@/composables/useTheme'
+import { useTheme } from '@stuntrocket/ui'
 
-const { mode, toggleTheme } = useTheme()
+const { mode, toggle: toggleTheme } = useTheme('dalil-theme-mode')
 
 const tooltip = computed(() => {
   switch (mode.value) {

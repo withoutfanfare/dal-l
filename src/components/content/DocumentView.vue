@@ -7,7 +7,7 @@ import { sanitiseHtml } from '@/lib/sanitise'
 import { useToastStack } from '@stuntrocket/ui'
 import { useProjects } from '@/composables/useProjects'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
-import ImageLightbox from './ImageLightbox.vue'
+import { SImageLightbox } from '@stuntrocket/ui'
 
 const props = defineProps<{
   document: Document
@@ -250,8 +250,8 @@ onBeforeUnmount(() => {
     v-html="renderedHtml"
   />
 
-  <ImageLightbox
-    v-if="lightboxOpen"
+  <SImageLightbox
+    :open="lightboxOpen"
     :src="lightboxSrc"
     :alt="lightboxAlt"
     @close="closeLightbox"

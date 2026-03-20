@@ -2,7 +2,7 @@
 import { watch, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useAI } from '@/composables/useAI'
 import { registerKeydownHandler } from '@/composables/useKeydownDispatcher'
-import { useFocusTrap } from '@/composables/useFocusTrap'
+import { useFocusTrap } from '@stuntrocket/ui'
 import AskInput from './AskInput.vue'
 import AskResponse from './AskResponse.vue'
 

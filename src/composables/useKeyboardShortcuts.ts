@@ -1,7 +1,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import type { Router } from 'vue-router'
 import { useSidebar } from './useSidebar'
-import { useTheme } from './useTheme'
+import { useTheme } from '@stuntrocket/ui'
 import { useAI } from './useAI'
 import { useCollections } from './useCollections'
 import { useNavigation, type NavigationTree } from './useNavigation'
@@ -32,7 +32,7 @@ function firstLeaf(nodes: NavigationTree[]): NavigationTree | null {
 
 export function useKeyboardShortcuts(router: Router) {
   const { toggleSidebar } = useSidebar()
-  const { toggleTheme } = useTheme()
+  const { toggle: toggleTheme } = useTheme('dalil-theme-mode')
   const { toggle: toggleAI } = useAI()
   const { isConfigured } = useSettings()
   const { collections, setActiveCollection } = useCollections()
