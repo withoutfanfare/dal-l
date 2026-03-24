@@ -7,7 +7,7 @@ import { sanitiseHtml } from '@/lib/sanitise'
 import { useToastStack } from '@stuntrocket/ui'
 import { useProjects } from '@/composables/useProjects'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
-import { SImageLightbox } from '@stuntrocket/ui'
+import SImageLightbox from '@/components/content/SImageLightbox.vue'
 
 const props = defineProps<{
   document: Document
