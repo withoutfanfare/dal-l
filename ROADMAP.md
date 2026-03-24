@@ -193,6 +193,48 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - Overlay styled consistently with the existing Scooda design (modal pattern, correct z-index)
   - Shortcuts list generated from the actual composable registrations (not a hardcoded separate list)
 
+### [Feature] AI conversation history persistence across sessions
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-19
+- **Status:** completed
+- **Completed:** 2026-03-24
+- **Description:** AI Q&A conversations are lost when navigating away from a document or closing the app. Persisting conversation threads per document in the user state SQLite database would allow users to return to previous Q&A sessions, building a knowledge trail alongside the handbook content. Each document accumulates its own conversation history, accessible when the document is re-opened.
+- **Acceptance criteria:**
+  - AI conversation messages (user questions + assistant responses) persisted in SQLite per project + document
+  - Conversation history loaded automatically when opening a document that has prior Q&A
+  - "New thread" action starts a fresh conversation while preserving history
+  - "Clear history" removes all persisted conversations for the current document
+  - Source references stored alongside assistant messages for later review
+
+### [Feature] Document backlink navigation
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-19
+- **Status:** completed
+- **Completed:** 2026-03-24
+- **Description:** Internal links between handbook documents are one-directional — you can follow a link from document A to document B, but document B has no awareness that A links to it. Building a reverse index during the build pipeline and displaying "Referenced by" links on each document page would surface these implicit relationships, helping users discover related content they might otherwise miss.
+- **Acceptance criteria:**
+  - Build pipeline collects resolved internal links and stores reverse mappings in a document_backlinks table
+  - "Referenced by" section displayed below related documents on DocPage
+  - Each backlink shows source document title, collection name, and link text
+  - Backlinks loaded asynchronously (do not block page render)
+  - Graceful handling when backlinks table does not exist (pre-rebuild databases)
+
+### [Quality] Broken internal link detection
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-19
+- **Status:** completed
+- **Completed:** 2026-03-24
+- **Description:** The build pipeline already detects broken internal links and logs them to the console, but this information is ephemeral — it vanishes after the build completes. Storing broken links in the database and surfacing them as a warning banner on the home page would make link health visible to all users, not just whoever ran the build. This complements the existing FTS health banner pattern.
+- **Acceptance criteria:**
+  - Build pipeline stores broken links in a broken_links database table (source slug, link text, target URL)
+  - Amber warning banner on HomePage shows broken link count when any exist
+  - Banner expandable to show full list with source document links and target URLs
+  - Banner follows existing FtsHealthBanner design pattern
+  - Graceful handling when broken_links table does not exist
+
 ## Pending
 
 ### [Innovation] Add AI-powered page summarisation for long handbook documents
