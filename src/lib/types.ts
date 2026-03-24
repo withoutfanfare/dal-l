@@ -212,3 +212,29 @@ export interface AiConversation {
   error: string | null
   provider: AiProvider | null
 }
+
+export interface AiConversationMessage {
+  id: number
+  projectId: string
+  docSlug: string
+  role: string
+  content: string
+  sourcesJson: string | null
+  createdAt: number
+}
+
+export interface BacklinkDocument {
+  slug: string
+  title: string
+  collectionId: string
+  collectionName: string
+  linkText: string
+}
+
+export interface BrokenLinkEntry {
+  sourceSlug: string
+  sourceTitle: string
+  collectionId: string
+  linkText: string
+  targetUrl: string
+}

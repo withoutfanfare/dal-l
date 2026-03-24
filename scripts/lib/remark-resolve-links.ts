@@ -8,16 +8,25 @@ export interface BrokenLink {
   resolvedPath: string
 }
 
+export interface ResolvedLink {
+  sourceSlug: string
+  targetSlug: string
+  linkText: string
+}
+
 export interface ResolveLinksOptions {
   collectionId: string
   currentFilePath: string
+  currentSlug: string
   slugMap: Map<string, string>
   /** Mutable array to collect broken link reports during processing. */
   brokenLinks?: BrokenLink[]
+  /** Mutable array to collect successfully resolved internal links for backlink index. */
+  resolvedLinks?: ResolvedLink[]
 }
 
 export default function remarkResolveLinks(options: ResolveLinksOptions) {
-  const { collectionId, currentFilePath, slugMap, brokenLinks } = options
+  const { collectionId, currentFilePath, currentSlug, slugMap, brokenLinks, resolvedLinks } = options
   const currentDir = path.dirname(currentFilePath)
   const lowerSlugMap = new Map<string, string>()
   const orderedPaths = Array.from(slugMap.keys())
@@ -89,7 +98,14 @@ export default function remarkResolveLinks(options: ResolveLinksOptions) {
       }
 
       if (slug) {
-        node.url = `/docs/${collectionId}/${slug}${suffix}`
+        const targetFullSlug = `${collectionId}/${slug}`
+        node.url = `/docs/${targetFullSlug}${suffix}`
+        if (resolvedLinks && currentSlug !== targetFullSlug) {
+          const linkText = node.children
+            ?.map((child: any) => child.value ?? child.children?.map((c: any) => c.value).join('') ?? '')
+            .join('') ?? ''
+          resolvedLinks.push({ sourceSlug: currentSlug, targetSlug: targetFullSlug, linkText })
+        }
       } else {
         // Collect broken link report
         const line: number | null = node.position?.start?.line ?? null

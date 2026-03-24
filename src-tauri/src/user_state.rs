@@ -128,6 +128,16 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
             PRIMARY KEY(project_id, doc_slug, related_slug)
         );
 
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id TEXT NOT NULL,
+            doc_slug TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            sources_json TEXT,
+            created_at INTEGER NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_bookmarks_project_updated
             ON bookmarks(project_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_bookmarks_project_doc_anchor
@@ -142,6 +152,8 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
             ON doc_highlights(project_id, doc_slug, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_change_feed_project_recorded
             ON project_change_feed(project_id, recorded_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_ai_conversations_project_doc
+            ON ai_conversations(project_id, doc_slug, created_at ASC);
         ",
     )
     .map_err(|e| format!("Failed to initialise user state DB schema: {}", e))?;

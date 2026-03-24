@@ -75,10 +75,27 @@ export function createDatabase(dbPath: string): Database.Database {
 
     CREATE VIRTUAL TABLE chunks_fts USING fts5(content_text, heading_context);
 
+    CREATE TABLE document_backlinks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_slug TEXT NOT NULL,
+      target_slug TEXT NOT NULL,
+      link_text TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE broken_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_slug TEXT NOT NULL,
+      link_text TEXT NOT NULL DEFAULT '',
+      target_url TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_documents_collection_id ON documents(collection_id);
     CREATE INDEX IF NOT EXISTS idx_navigation_tree_collection_id ON navigation_tree(collection_id);
     CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
     CREATE INDEX IF NOT EXISTS idx_navigation_tree_sort ON navigation_tree(collection_id, parent_slug, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_backlinks_target ON document_backlinks(target_slug);
+    CREATE INDEX IF NOT EXISTS idx_backlinks_source ON document_backlinks(source_slug);
+    CREATE INDEX IF NOT EXISTS idx_broken_links_source ON broken_links(source_slug);
   `)
 
   return db
@@ -255,4 +272,46 @@ export function insertChunks(
 ): void {
   const insertAll = db.transaction(() => insertChunksRaw(db, documentId, chunks))
   insertAll()
+}
+
+interface BacklinkInsertParams {
+  sourceSlug: string
+  targetSlug: string
+  linkText: string
+}
+
+/**
+ * Insert backlink records without wrapping in a transaction.
+ */
+export function insertBacklinksRaw(
+  db: Database.Database,
+  backlinks: BacklinkInsertParams[],
+): void {
+  const stmt = db.prepare(
+    'INSERT INTO document_backlinks (source_slug, target_slug, link_text) VALUES (?, ?, ?)',
+  )
+  for (const bl of backlinks) {
+    stmt.run(bl.sourceSlug, bl.targetSlug, bl.linkText)
+  }
+}
+
+interface BrokenLinkInsertParams {
+  sourceSlug: string
+  linkText: string
+  targetUrl: string
+}
+
+/**
+ * Insert broken link records without wrapping in a transaction.
+ */
+export function insertBrokenLinksRaw(
+  db: Database.Database,
+  links: BrokenLinkInsertParams[],
+): void {
+  const stmt = db.prepare(
+    'INSERT INTO broken_links (source_slug, link_text, target_url) VALUES (?, ?, ?)',
+  )
+  for (const link of links) {
+    stmt.run(link.sourceSlug, link.linkText, link.targetUrl)
+  }
 }

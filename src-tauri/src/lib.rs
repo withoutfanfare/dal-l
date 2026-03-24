@@ -144,6 +144,11 @@ pub fn run() {
             commands::get_build_timestamp,
             commands::mark_collection_all_read,
             commands::reset_collection_progress,
+            commands::get_ai_conversation_history,
+            commands::save_ai_conversation_message,
+            commands::clear_ai_conversation_history,
+            commands::get_document_backlinks,
+            commands::get_broken_links,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

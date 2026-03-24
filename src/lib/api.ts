@@ -22,6 +22,9 @@ import type {
   RelatedDocument,
   FtsConsistencyResult,
   CollectionProgress,
+  AiConversationMessage,
+  BacklinkDocument,
+  BrokenLinkEntry,
 } from './types'
 
 export async function getCollections(): Promise<Collection[]> {
@@ -344,4 +347,39 @@ export async function resetCollectionProgress(
   collectionId: string,
 ): Promise<void> {
   return invoke('reset_collection_progress', { projectId, collectionId })
+}
+
+export async function getAiConversationHistory(
+  projectId: string,
+  docSlug: string,
+  limit?: number,
+): Promise<AiConversationMessage[]> {
+  return invoke('get_ai_conversation_history', { projectId, docSlug, limit })
+}
+
+export async function saveAiConversationMessage(
+  projectId: string,
+  docSlug: string,
+  role: string,
+  content: string,
+  sourcesJson?: string | null,
+): Promise<AiConversationMessage> {
+  return invoke('save_ai_conversation_message', { projectId, docSlug, role, content, sourcesJson })
+}
+
+export async function clearAiConversationHistory(
+  projectId: string,
+  docSlug: string,
+): Promise<number> {
+  return invoke('clear_ai_conversation_history', { projectId, docSlug })
+}
+
+export async function getDocumentBacklinks(
+  slug: string,
+): Promise<BacklinkDocument[]> {
+  return invoke('get_document_backlinks', { slug })
+}
+
+export async function getBrokenLinks(): Promise<BrokenLinkEntry[]> {
+  return invoke('get_broken_links')
 }

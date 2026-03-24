@@ -13,7 +13,7 @@ import rehypeStringify from 'rehype-stringify'
 import config from '../dalil.config.js'
 import { extractMetadata } from './lib/extract-metadata.js'
 import { parseFrontmatter } from './lib/parse-frontmatter.js'
-import remarkResolveLinks, { type BrokenLink } from './lib/remark-resolve-links.js'
+import remarkResolveLinks, { type BrokenLink, type ResolvedLink } from './lib/remark-resolve-links.js'
 import { buildNavigation, type DocInfo } from './lib/build-navigation.js'
 import { chunkContent } from './lib/chunk-content.js'
 import {
@@ -22,6 +22,8 @@ import {
   insertDocumentRaw,
   insertNavigationRaw,
   insertChunksRaw,
+  insertBacklinksRaw,
+  insertBrokenLinksRaw,
 } from './lib/create-database.js'
 import type { Collection } from './lib/config.js'
 import type { DocumentMetadata } from './lib/extract-metadata.js'
@@ -260,18 +262,21 @@ function readBuildCounts(db: ReturnType<typeof createDatabase>) {
   const embeddingCount = (db.prepare('SELECT count(*) as count FROM chunk_embeddings').get() as { count: number }).count
   const tagCount = (db.prepare('SELECT count(*) as count FROM tags').get() as { count: number }).count
   const navCount = (db.prepare('SELECT count(*) as count FROM navigation_tree').get() as { count: number }).count
-  return { docCount, chunkCount, embeddingCount, tagCount, navCount }
+  const backlinkCount = (db.prepare('SELECT count(*) as count FROM document_backlinks').get() as { count: number }).count
+  const brokenLinkDbCount = (db.prepare('SELECT count(*) as count FROM broken_links').get() as { count: number }).count
+  return { docCount, chunkCount, embeddingCount, tagCount, navCount, backlinkCount, brokenLinkDbCount }
 }
 
 function printBuildSummary(db: ReturnType<typeof createDatabase>, brokenLinks: BrokenLink[]) {
-  const { docCount, chunkCount, embeddingCount, tagCount, navCount } = readBuildCounts(db)
+  const { docCount, chunkCount, embeddingCount, tagCount, navCount, backlinkCount, brokenLinkDbCount } = readBuildCounts(db)
   console.log('\n  Summary:')
   console.log(`  Documents: ${docCount}`)
   console.log(`  Chunks: ${chunkCount}`)
   console.log(`  Embeddings: ${embeddingCount}`)
   console.log(`  Tags: ${tagCount}`)
   console.log(`  Navigation nodes: ${navCount}`)
-  if (brokenLinks.length > 0) {
+  console.log(`  Backlinks: ${backlinkCount}`)
+  if (brokenLinks.length > 0 || brokenLinkDbCount > 0) {
     console.log(`  Broken links: ${brokenLinks.length}`)
   }
 }
@@ -331,6 +336,7 @@ async function processFilesInParallel(
   metadataCache: Map<string, DocumentMetadata>,
   slugMap: Map<string, string>,
   brokenLinks: BrokenLink[],
+  resolvedLinks: ResolvedLink[],
 ): Promise<ProcessedFile[]> {
   const results: ProcessedFile[] = []
   let processedCount = 0
@@ -343,6 +349,7 @@ async function processFilesInParallel(
         const fileContent = readFileSync(filePath, 'utf-8')
         const metadata = metadataCache.get(filePath)!
         const parsed = parseFrontmatter(fileContent, metadata.title)
+        const fullSlug = `${collection.id}/${metadata.slug}`
 
         // Each file needs its own processor because remarkResolveLinks
         // requires per-file options (currentFilePath, slugMap context).
@@ -352,8 +359,10 @@ async function processFilesInParallel(
           .use(remarkResolveLinks, {
             collectionId: collection.id,
             currentFilePath: metadata.relativePath,
+            currentSlug: fullSlug,
             slugMap,
             brokenLinks,
+            resolvedLinks,
           })
           .use(remarkRehype, { allowDangerousHtml: true })
           .use(rehypeSlug)
@@ -368,7 +377,6 @@ async function processFilesInParallel(
 
         const contentHtml = String(await fileProcessor.process(parsed.content))
 
-        const fullSlug = `${collection.id}/${metadata.slug}`
         const level = metadata.slug.split('/').length - 1
 
         return { filePath, metadata, parsed, contentHtml, fullSlug, level }
@@ -391,6 +399,7 @@ async function processCollection(
   collectionIndex: number,
   db: ReturnType<typeof createDatabase>,
   brokenLinks: BrokenLink[],
+  resolvedLinks: ResolvedLink[],
 ) {
   const sourceDir = collection.source
 
@@ -440,6 +449,7 @@ async function processCollection(
     metadataCache,
     slugMap,
     brokenLinks,
+    resolvedLinks,
   )
   console.log(`  Processed ${processedFiles.length}/${deduped.length} files`)
 
@@ -564,12 +574,19 @@ async function main() {
     }
 
     const brokenLinks: BrokenLink[] = []
+    const resolvedLinks: ResolvedLink[] = []
     const db = createDatabase(cliArgs.output)
 
     try {
       db.exec('BEGIN')
       try {
-        await processCollection(collection, 0, db, brokenLinks)
+        await processCollection(collection, 0, db, brokenLinks, resolvedLinks)
+        insertBacklinksRaw(db, resolvedLinks)
+        insertBrokenLinksRaw(db, brokenLinks.map((bl) => ({
+          sourceSlug: `${cliArgs.collectionId}/${bl.sourceFile.replace(/\.md$/, '').replace(/\\/g, '/')}`,
+          linkText: '',
+          targetUrl: bl.targetUrl,
+        })))
         db.exec('COMMIT')
       } catch (err) {
         db.exec('ROLLBACK')
@@ -614,14 +631,29 @@ async function main() {
   console.log(`Collections: ${config.collections.length}`)
 
   const brokenLinks: BrokenLink[] = []
+  const resolvedLinks: ResolvedLink[] = []
   const db = createDatabase(DB_PATH)
 
   try {
     db.exec('BEGIN')
     try {
       for (let i = 0; i < config.collections.length; i++) {
-        await processCollection(config.collections[i], i, db, brokenLinks)
+        await processCollection(config.collections[i], i, db, brokenLinks, resolvedLinks)
       }
+      insertBacklinksRaw(db, resolvedLinks)
+      insertBrokenLinksRaw(db, brokenLinks.map((bl) => {
+        // Derive a slug from the broken link's sourceFile (relative path without .md)
+        const sourceSlug = bl.sourceFile.replace(/\.md$/, '').replace(/\\/g, '/')
+        // Find which collection this source belongs to by checking slug prefixes
+        const matchedCollection = config.collections.find((c) =>
+          resolvedLinks.some((rl) => rl.sourceSlug.endsWith(`/${sourceSlug}`))
+            || sourceSlug.startsWith(c.id + '/')
+        )
+        const fullSourceSlug = matchedCollection
+          ? `${matchedCollection.id}/${sourceSlug}`
+          : sourceSlug
+        return { sourceSlug: fullSourceSlug, linkText: '', targetUrl: bl.targetUrl }
+      }))
       db.exec('COMMIT')
     } catch (err) {
       db.exec('ROLLBACK')

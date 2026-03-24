@@ -6,7 +6,7 @@ import { useFocusTrap } from '@stuntrocket/ui'
 import AskInput from './AskInput.vue'
 import AskResponse from './AskResponse.vue'
 
-const { isOpen, conversations, loading, hasConversations, close, clearConversation, ask, cancelCurrent } = useAI()
+const { isOpen, conversations, loading, hasConversations, hasPersistedHistory, close, clearConversation, startNewConversation, ask, cancelCurrent } = useAI()
 
 const inputRef = ref<InstanceType<typeof AskInput> | null>(null)
 const scrollRef = ref<HTMLElement | null>(null)
@@ -123,6 +123,13 @@ onUnmounted(() => {
           <button
             v-if="hasConversations"
             class="text-xs text-text-secondary hover:text-text-primary transition-colors"
+            @click="startNewConversation"
+          >
+            New thread
+          </button>
+          <button
+            v-if="hasConversations"
+            class="text-xs text-text-secondary hover:text-text-primary transition-colors"
             @click="handleClear"
           >
             Clear
@@ -147,8 +154,11 @@ onUnmounted(() => {
           <svg class="w-10 h-10 text-text-secondary/40 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
           </svg>
-          <p class="text-sm text-text-secondary">
+          <p class="text-sm text-text-secondary mb-3">
             Ask a question about your documentation and get AI-powered answers.
+          </p>
+          <p v-if="hasPersistedHistory" class="text-xs text-text-secondary/70">
+            Previous conversation available — start typing to continue.
           </p>
         </div>
 

@@ -2926,7 +2926,213 @@ pub async fn remove_project(
             params![&project_id],
         )
         .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM ai_conversations WHERE project_id = ?1",
+            params![&project_id],
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AI Conversation History
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_ai_conversation_history(
+    project_id: String,
+    doc_slug: String,
+    limit: Option<i64>,
+    user_state: State<'_, UserStateDb>,
+) -> Result<Vec<AiConversationMessage>, String> {
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    let max = limit.unwrap_or(20);
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, project_id, doc_slug, role, content, sources_json, created_at
+             FROM ai_conversations
+             WHERE project_id = ?1 AND doc_slug = ?2
+             ORDER BY created_at ASC
+             LIMIT ?3",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(params![&project_id, &doc_slug, max], |row| {
+            Ok(AiConversationMessage {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                doc_slug: row.get(2)?,
+                role: row.get(3)?,
+                content: row.get(4)?,
+                sources_json: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_ai_conversation_message(
+    project_id: String,
+    doc_slug: String,
+    role: String,
+    content: String,
+    sources_json: Option<String>,
+    user_state: State<'_, UserStateDb>,
+) -> Result<AiConversationMessage, String> {
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    let now = unix_timestamp_i64();
+
+    conn.execute(
+        "INSERT INTO ai_conversations (project_id, doc_slug, role, content, sources_json, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![&project_id, &doc_slug, &role, &content, &sources_json, now],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let id = conn.last_insert_rowid();
+
+    Ok(AiConversationMessage {
+        id,
+        project_id,
+        doc_slug,
+        role,
+        content,
+        sources_json,
+        created_at: now,
+    })
+}
+
+#[tauri::command]
+pub fn clear_ai_conversation_history(
+    project_id: String,
+    doc_slug: String,
+    user_state: State<'_, UserStateDb>,
+) -> Result<i64, String> {
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+
+    let deleted = conn
+        .execute(
+            "DELETE FROM ai_conversations WHERE project_id = ?1 AND doc_slug = ?2",
+            params![&project_id, &doc_slug],
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(deleted as i64)
+}
+
+// ---------------------------------------------------------------------------
+// Document Backlinks
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_document_backlinks(
+    slug: String,
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+) -> Result<Vec<BacklinkDocument>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let project_id = &mgr.registry.active_project_id;
+    let conn = mgr
+        .connections
+        .get(project_id)
+        .ok_or_else(|| format!("No database connection for project '{}'", project_id))?;
+
+    // Check if document_backlinks table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='document_backlinks'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT b.source_slug, d.title, d.collection_id, c.name, b.link_text
+             FROM document_backlinks b
+             JOIN documents d ON d.slug = b.source_slug
+             JOIN collections c ON c.id = d.collection_id
+             WHERE b.target_slug = ?1
+             ORDER BY d.title ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(params![&slug], |row| {
+            Ok(BacklinkDocument {
+                slug: row.get(0)?,
+                title: row.get(1)?,
+                collection_id: row.get(2)?,
+                collection_name: row.get(3)?,
+                link_text: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Broken Internal Links
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_broken_links(
+    manager: State<'_, std::sync::Mutex<ProjectManager>>,
+) -> Result<Vec<BrokenLinkEntry>, String> {
+    let mgr = manager.lock().map_err(|e| e.to_string())?;
+    let project_id = &mgr.registry.active_project_id;
+    let conn = mgr
+        .connections
+        .get(project_id)
+        .ok_or_else(|| format!("No database connection for project '{}'", project_id))?;
+
+    // Check if broken_links table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='broken_links'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT bl.source_slug, d.title, d.collection_id, bl.link_text, bl.target_url
+             FROM broken_links bl
+             JOIN documents d ON d.slug = bl.source_slug
+             ORDER BY d.title ASC, bl.link_text ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(BrokenLinkEntry {
+                source_slug: row.get(0)?,
+                source_title: row.get(1)?,
+                collection_id: row.get(2)?,
+                link_text: row.get(3)?,
+                target_url: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }

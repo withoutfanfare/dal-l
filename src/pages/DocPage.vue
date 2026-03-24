@@ -9,6 +9,7 @@ import { useProjects } from '@/composables/useProjects'
 import { useBookmarks } from '@/composables/useBookmarks'
 import { useDocActivity } from '@/composables/useDocActivity'
 import { useDocNotes } from '@/composables/useDocNotes'
+import { useAI } from '@/composables/useAI'
 import { useDocTabs } from '@/composables/useDocTabs'
 import { useNavigation } from '@/composables/useNavigation'
 import { SBreadcrumbs, useToastStack } from '@stuntrocket/ui'
@@ -17,6 +18,7 @@ import ContentHeader from '@/components/content/ContentHeader.vue'
 import DocumentView from '@/components/content/DocumentView.vue'
 import DocRightSidebar from '@/components/content/DocRightSidebar.vue'
 import RelatedDocuments from '@/components/content/RelatedDocuments.vue'
+import BacklinkDocuments from '@/components/content/BacklinkDocuments.vue'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
 
 const route = useRoute()
@@ -27,6 +29,7 @@ const { activeProjectId } = useProjects()
 const { ensureLoaded, toggleBookmark, isBookmarked, byDocSlug, removeBookmark } = useBookmarks()
 const { markViewed } = useDocActivity()
 const { note, highlights, load: loadDocNotes, save: saveDocNote, addHighlight, removeHighlight } = useDocNotes()
+const { loadHistory: loadAiHistory, setDocContext, startNewConversation: resetAiConversation } = useAI()
 const { setTabTitle } = useDocTabs()
 const { findSectionSlug } = useNavigation()
 const { addToast } = useToastStack()
@@ -251,6 +254,9 @@ async function fetchDocument() {
       if (thisRequest !== fetchRequestId) return
       noteDraft.value = note.value?.note ?? ''
       lastSavedNote.value = noteDraft.value
+      // Load AI conversation history for this document
+      resetAiConversation()
+      await loadAiHistory(activeProjectId.value, nextDocument.slug)
       await markViewed(activeProjectId.value, nextDocument.slug)
     } else {
       changedHeadingIds.value = []
@@ -550,6 +556,9 @@ watch(noteDraft, () => {
 
         <!-- Related documents -->
         <RelatedDocuments :slug="document.slug" />
+
+        <!-- Backlinks -->
+        <BacklinkDocuments :slug="document.slug" />
 
         <!-- Next/Previous navigation -->
         <nav

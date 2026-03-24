@@ -241,3 +241,35 @@ pub enum AiProvider {
     Gemini,
     Ollama,
 }
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiConversationMessage {
+    pub id: i64,
+    pub project_id: String,
+    pub doc_slug: String,
+    pub role: String,
+    pub content: String,
+    pub sources_json: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BacklinkDocument {
+    pub slug: String,
+    pub title: String,
+    pub collection_id: String,
+    pub collection_name: String,
+    pub link_text: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BrokenLinkEntry {
+    pub source_slug: String,
+    pub source_title: String,
+    pub collection_id: String,
+    pub link_text: String,
+    pub target_url: String,
+}

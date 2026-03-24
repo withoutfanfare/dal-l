@@ -1,6 +1,12 @@
 import { ref, computed } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { askQuestion, cancelAiRequest } from '@/lib/api'
+import {
+  askQuestion,
+  cancelAiRequest,
+  getAiConversationHistory,
+  saveAiConversationMessage,
+  clearAiConversationHistory,
+} from '@/lib/api'
 import { useSettings } from './useSettings'
 import type { AiProvider } from '@/lib/types'
 
@@ -49,12 +55,30 @@ const conversations = ref<ConversationEntry[]>([])
 const listenersReady = ref(false)
 const unlistenFns = ref<(() => void)[]>([])
 const entryByRequest = new Map<string, ConversationEntry>()
+const activeDocSlug = ref<string | null>(null)
+const activeProjectId = ref<string | null>(null)
+const hasPersistedHistory = ref(false)
 
 function createRequestId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
   }
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+/** Persist a completed conversation entry to the database. */
+async function persistEntry(entry: ConversationEntry) {
+  const projectId = activeProjectId.value
+  const docSlug = activeDocSlug.value
+  if (!projectId || !docSlug || entry.loading) return
+
+  try {
+    await saveAiConversationMessage(projectId, docSlug, 'user', entry.question)
+    const sourcesJson = entry.sources.length > 0 ? JSON.stringify(entry.sources) : null
+    await saveAiConversationMessage(projectId, docSlug, 'assistant', entry.response, sourcesJson)
+  } catch {
+    // Non-critical — history persistence failure should not disrupt the user.
+  }
 }
 
 async function ensureListeners() {
@@ -74,6 +98,10 @@ async function ensureListeners() {
         entry.error = 'Cancelled'
       }
       entryByRequest.delete(event.payload.requestId)
+      // Persist completed entry
+      if (!entry.error) {
+        persistEntry(entry)
+      }
     }),
     listen<AiResponseErrorEvent>('ai-response-error', (event) => {
       const entry = entryByRequest.get(event.payload.requestId)
@@ -119,6 +147,78 @@ export function useAI() {
   function clearConversation() {
     conversations.value = []
     entryByRequest.clear()
+    // Also clear persisted history
+    const projectId = activeProjectId.value
+    const docSlug = activeDocSlug.value
+    if (projectId && docSlug) {
+      clearAiConversationHistory(projectId, docSlug).catch(() => {})
+    }
+    hasPersistedHistory.value = false
+  }
+
+  function startNewConversation() {
+    conversations.value = []
+    entryByRequest.clear()
+    hasPersistedHistory.value = false
+  }
+
+  /** Load persisted conversation history for the given document. */
+  async function loadHistory(projectId: string, docSlug: string) {
+    activeProjectId.value = projectId
+    activeDocSlug.value = docSlug
+
+    try {
+      const messages = await getAiConversationHistory(projectId, docSlug, 20)
+      if (messages.length === 0) {
+        hasPersistedHistory.value = false
+        return
+      }
+
+      hasPersistedHistory.value = true
+
+      // Only load if current conversations are empty (don't overwrite active session)
+      if (conversations.value.length > 0) return
+
+      // Reconstruct conversation entries from persisted message pairs
+      const entries: ConversationEntry[] = []
+      for (let i = 0; i < messages.length; i += 2) {
+        const userMsg = messages[i]
+        const assistantMsg = messages[i + 1]
+        if (!userMsg || userMsg.role !== 'user') continue
+
+        const sources: AiSourceReference[] = []
+        if (assistantMsg?.sourcesJson) {
+          try {
+            const parsed = JSON.parse(assistantMsg.sourcesJson)
+            if (Array.isArray(parsed)) sources.push(...parsed)
+          } catch { /* ignore parse errors */ }
+        }
+
+        entries.push({
+          id: createRequestId(),
+          question: userMsg.content,
+          response: assistantMsg?.content ?? '',
+          loading: false,
+          error: null,
+          provider: null,
+          timestamp: userMsg.createdAt * 1000,
+          sources,
+        })
+      }
+
+      if (entries.length > 0) {
+        conversations.value = entries
+      }
+    } catch {
+      // Non-critical
+      hasPersistedHistory.value = false
+    }
+  }
+
+  /** Update the active document context without loading history. */
+  function setDocContext(projectId: string, docSlug: string) {
+    activeProjectId.value = projectId
+    activeDocSlug.value = docSlug
   }
 
   async function ask(text: string, provider?: AiProvider) {
@@ -172,12 +272,16 @@ export function useAI() {
     conversations,
     loading,
     hasConversations,
+    hasPersistedHistory,
     currentEntry,
     isConfigured,
     open,
     close,
     toggle,
     clearConversation,
+    startNewConversation,
+    loadHistory,
+    setDocContext,
     ask,
     cancelCurrent,
     disposeListeners,

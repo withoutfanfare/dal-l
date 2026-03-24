@@ -7,6 +7,7 @@ import { useProjects } from '@/composables/useProjects'
 import { useDocActivity } from '@/composables/useDocActivity'
 import { docSlugWithoutCollection } from '@/lib/deepLinks'
 import FtsHealthBanner from '@/components/search/FtsHealthBanner.vue'
+import BrokenLinksBanner from '@/components/search/BrokenLinksBanner.vue'
 
 const { collections } = useCollections()
 const { open: openSearch } = useCommandPalette()
@@ -47,6 +48,7 @@ watch(
 <template>
   <div class="flex flex-col items-center min-h-[60vh] pt-8">
     <FtsHealthBanner class="w-full max-w-xl" />
+    <BrokenLinksBanner class="w-full max-w-xl" />
     <div class="mb-10 text-center">
       <h1 class="text-2xl font-semibold text-text-primary tracking-tight mb-1">
         dal&#x012B;l
