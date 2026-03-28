@@ -128,6 +128,18 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
             PRIMARY KEY(project_id, doc_slug, related_slug)
         );
 
+        CREATE TABLE IF NOT EXISTS document_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id TEXT NOT NULL,
+            doc_slug TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            summary_provider TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(project_id, doc_slug, content_hash)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_bookmarks_project_updated
             ON bookmarks(project_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_bookmarks_project_doc_anchor
@@ -142,6 +154,8 @@ pub fn init_user_state_db(app: &AppHandle) -> Result<Connection, String> {
             ON doc_highlights(project_id, doc_slug, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_change_feed_project_recorded
             ON project_change_feed(project_id, recorded_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_doc_summaries_project_doc_hash
+            ON document_summaries(project_id, doc_slug, content_hash);
         ",
     )
     .map_err(|e| format!("Failed to initialise user state DB schema: {}", e))?;
