@@ -235,13 +235,12 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - Banner follows existing FtsHealthBanner design pattern
   - Graceful handling when broken_links table does not exist
 
-## Pending
-
 ### [Innovation] Add AI-powered page summarisation for long handbook documents
 - **Priority:** P3 (nice-to-have)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-28
 - **Description:** Many engineering handbook pages are dense multi-thousand-word references that take significant time to parse. Leveraging the existing AI infrastructure (RAG pipeline, provider configuration) to generate a concise summary at the top of long documents would help engineers quickly determine if a page contains what they need before committing to a full read. This is especially valuable for onboarding engineers encountering unfamiliar handbooks.
 - **Acceptance criteria:**
   - "Summarise" button or auto-summary section available on documents exceeding a configurable length threshold (default: 1500 words)
@@ -249,6 +248,10 @@ Desktop knowledge app for browsing and searching engineering handbooks with opti
   - Summary cached in the database to avoid repeated API calls for the same document version
   - Cache invalidated when document content hash changes (handbook rebuild)
   - Summary generation is on-demand (not automatic) to respect API usage and user preference
+
+## Pending
+
+_No pending items outside the Shared Component Library section._
 
 ## Shared Component Library
 

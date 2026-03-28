@@ -57,3 +57,13 @@
 - Tests passing: yes (cargo check clean, cargo clippy clean excluding pre-existing warnings, vue-tsc clean excluding pre-existing module resolution warnings)
 - Build status: pending
 - Notes: All three features span the full stack: build pipeline (scripts/lib/), Rust backend (models, commands, user_state schema), TypeScript types and API wrappers, and Vue components/composables. The backlinks and broken links features share the remark-resolve-links enhancement — resolved links feed backlinks, unresolved links feed broken_links. Both DB tables use graceful table-existence checks in the Rust commands to handle databases built before this feature. AI conversation cleanup added to remove_project command to prevent orphaned data.
+
+## Cycle: 2026-03-28 17:00
+- App: Dalil
+- Items completed:
+  - [Innovation] Add AI-powered page summarisation for long handbook documents (P3/M) — Full-stack implementation. Rust: new `document_summaries` table in user_state.db with UNIQUE(project_id, doc_slug, content_hash) constraint for automatic cache invalidation on content change. Non-streaming `complete_chat()` function added for all four AI providers (OpenAI, Anthropic, Gemini, Ollama) as a simpler alternative to the existing streaming pipeline. `build_summarise_messages()` constructs a British English system prompt targeting <300 word bullet-point summaries. `get_document_summary` (cache lookup) and `generate_document_summary` (AI call + upsert) commands with `resolve_provider()` reuse. SHA-256 content hashing via `sha2` crate on HTML-stripped plain text. Vue: `useDocSummary` composable with 1500-word threshold check, cache-first loading, and on-demand generation. `DocumentSummary.vue` collapsible panel component with provider attribution, loading/generating/error states, and accent-styled "Summarise" button. Integrated into DocPage.vue between ContentHeader and compare mode toolbar, conditionally rendered only for long documents.
+- Items attempted but failed: none
+- Branch: feature/ai-page-summarisation → develop
+- Tests passing: yes (cargo check clean, cargo clippy clean excluding pre-existing warnings, vue-tsc clean excluding pre-existing SImageLightbox import error)
+- Build status: pending
+- Notes: First feature to add non-streaming AI completion support. The `complete_chat()` function complements the existing `stream_chat_response()` and is suitable for any future task where streaming is unnecessary (e.g. auto-tagging, content classification). The sha2 crate was added as a new Cargo dependency for content hashing.

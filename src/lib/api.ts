@@ -22,6 +22,7 @@ import type {
   RelatedDocument,
   FtsConsistencyResult,
   CollectionProgress,
+  DocumentSummary,
 } from './types'
 
 export async function getCollections(): Promise<Collection[]> {
@@ -344,4 +345,28 @@ export async function resetCollectionProgress(
   collectionId: string,
 ): Promise<void> {
   return invoke('reset_collection_progress', { projectId, collectionId })
+}
+
+export async function getDocumentSummary(
+  projectId: string,
+  docSlug: string,
+  contentHtml: string,
+): Promise<DocumentSummary | null> {
+  return invoke('get_document_summary', { projectId, docSlug, contentHtml })
+}
+
+export async function generateDocumentSummary(
+  projectId: string,
+  docSlug: string,
+  docTitle: string,
+  contentHtml: string,
+  provider?: AiProvider,
+): Promise<DocumentSummary> {
+  return invoke('generate_document_summary', {
+    projectId,
+    docSlug,
+    docTitle,
+    contentHtml,
+    provider,
+  })
 }

@@ -17,6 +17,8 @@ import ContentHeader from '@/components/content/ContentHeader.vue'
 import DocumentView from '@/components/content/DocumentView.vue'
 import DocRightSidebar from '@/components/content/DocRightSidebar.vue'
 import RelatedDocuments from '@/components/content/RelatedDocuments.vue'
+import DocumentSummaryPanel from '@/components/content/DocumentSummary.vue'
+import { useDocSummary } from '@/composables/useDocSummary'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
 
 const route = useRoute()
@@ -30,6 +32,16 @@ const { note, highlights, load: loadDocNotes, save: saveDocNote, addHighlight, r
 const { setTabTitle } = useDocTabs()
 const { findSectionSlug } = useNavigation()
 const { addToast } = useToastStack()
+const {
+  summary: docSummary,
+  loading: summaryLoading,
+  generating: summaryGenerating,
+  error: summaryError,
+  wordCount: summaryWordCount,
+  isLongDocument,
+  load: loadDocSummary,
+  generate: generateDocSummary,
+} = useDocSummary()
 
 const breadcrumbSegments = computed<BreadcrumbSegment[]>(() => {
   const doc = document.value
@@ -251,6 +263,7 @@ async function fetchDocument() {
       if (thisRequest !== fetchRequestId) return
       noteDraft.value = note.value?.note ?? ''
       lastSavedNote.value = noteDraft.value
+      await loadDocSummary(activeProjectId.value, nextDocument.slug, nextDocument.content_html)
       await markViewed(activeProjectId.value, nextDocument.slug)
     } else {
       changedHeadingIds.value = []
@@ -525,6 +538,17 @@ watch(noteDraft, () => {
         <ContentHeader
           :document="document"
           @share-link="handleShareLink"
+        />
+
+        <DocumentSummaryPanel
+          v-if="isLongDocument()"
+          class="mb-5"
+          :summary="docSummary"
+          :loading="summaryLoading"
+          :generating="summaryGenerating"
+          :error="summaryError"
+          :word-count="summaryWordCount"
+          @generate="(provider) => activeProjectId && document && generateDocSummary(activeProjectId, document.slug, document.title, document.content_html, provider)"
         />
 
         <div class="mb-5 rounded-xl border border-border/60 bg-surface/45 backdrop-blur-xl px-3.5 py-2.5 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.85)]">

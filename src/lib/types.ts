@@ -188,6 +188,17 @@ export interface CollectionProgress {
   viewedDocuments: number
 }
 
+export interface DocumentSummary {
+  id: number
+  projectId: string
+  docSlug: string
+  contentHash: string
+  summary: string
+  summaryProvider: string
+  createdAt: number
+  updatedAt: number
+}
+
 export type AiProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
 
 export interface Settings {
