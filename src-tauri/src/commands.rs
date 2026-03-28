@@ -5,6 +5,7 @@ use crate::projects::ProjectManager;
 use crate::settings;
 use crate::user_state::UserStateDb;
 use rusqlite::{params, OptionalExtension};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
 
@@ -2929,4 +2930,149 @@ pub async fn remove_project(
     }
 
     Ok(())
+}
+
+// -- Document summaries --
+
+/// Strip HTML tags from content to produce plain text for hashing and summarisation.
+fn strip_html_tags(html: &str) -> String {
+    let mut result = String::with_capacity(html.len());
+    let mut inside_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => inside_tag = true,
+            '>' => inside_tag = false,
+            _ if !inside_tag => result.push(ch),
+            _ => {}
+        }
+    }
+    result
+}
+
+/// Compute SHA-256 hash of the given text, returned as a hex string.
+fn content_hash(text: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(text.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+#[tauri::command]
+pub fn get_document_summary(
+    user_state: State<'_, UserStateDb>,
+    project_id: String,
+    doc_slug: String,
+    content_html: String,
+) -> Result<Option<DocumentSummary>, String> {
+    let plain = strip_html_tags(&content_html);
+    let hash = content_hash(&plain);
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+
+    conn.query_row(
+        "SELECT id, project_id, doc_slug, content_hash, summary, summary_provider, created_at, updated_at
+         FROM document_summaries
+         WHERE project_id = ?1 AND doc_slug = ?2 AND content_hash = ?3
+         LIMIT 1",
+        params![&project_id, &doc_slug, &hash],
+        |row| {
+            Ok(DocumentSummary {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                doc_slug: row.get(2)?,
+                content_hash: row.get(3)?,
+                summary: row.get(4)?,
+                summary_provider: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn generate_document_summary(
+    app: AppHandle,
+    http_client: State<'_, HttpClient>,
+    user_state: State<'_, UserStateDb>,
+    project_id: String,
+    doc_slug: String,
+    doc_title: String,
+    content_html: String,
+    provider: Option<AiProvider>,
+) -> Result<DocumentSummary, String> {
+    let plain = strip_html_tags(&content_html);
+    let hash = content_hash(&plain);
+
+    // Check cache first
+    {
+        let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+        let existing: Option<DocumentSummary> = conn
+            .query_row(
+                "SELECT id, project_id, doc_slug, content_hash, summary, summary_provider, created_at, updated_at
+                 FROM document_summaries
+                 WHERE project_id = ?1 AND doc_slug = ?2 AND content_hash = ?3
+                 LIMIT 1",
+                params![&project_id, &doc_slug, &hash],
+                |row| {
+                    Ok(DocumentSummary {
+                        id: row.get(0)?,
+                        project_id: row.get(1)?,
+                        doc_slug: row.get(2)?,
+                        content_hash: row.get(3)?,
+                        summary: row.get(4)?,
+                        summary_provider: row.get(5)?,
+                        created_at: row.get(6)?,
+                        updated_at: row.get(7)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        if let Some(cached) = existing {
+            return Ok(cached);
+        }
+    }
+
+    let stored = settings::load_settings(&app)?;
+    let resolved = resolve_provider(&stored, provider)?;
+
+    let messages = ai::build_summarise_messages(&doc_title, &plain);
+    let summary_text = ai::complete_chat(&http_client.0, &stored, &resolved, &messages).await?;
+
+    let provider_name = serde_json::to_value(&resolved)
+        .ok()
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let conn = user_state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO document_summaries (project_id, doc_slug, content_hash, summary, summary_provider, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(project_id, doc_slug, content_hash) DO UPDATE SET
+             summary = excluded.summary,
+             summary_provider = excluded.summary_provider,
+             updated_at = excluded.updated_at",
+        params![&project_id, &doc_slug, &hash, &summary_text, &provider_name, now, now],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let id = conn.last_insert_rowid();
+
+    Ok(DocumentSummary {
+        id,
+        project_id,
+        doc_slug,
+        content_hash: hash,
+        summary: summary_text,
+        summary_provider: provider_name,
+        created_at: now,
+        updated_at: now,
+    })
 }

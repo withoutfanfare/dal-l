@@ -233,6 +233,19 @@ pub struct CollectionProgress {
     pub viewed_documents: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSummary {
+    pub id: i64,
+    pub project_id: String,
+    pub doc_slug: String,
+    pub content_hash: String,
+    pub summary: String,
+    pub summary_provider: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AiProvider {

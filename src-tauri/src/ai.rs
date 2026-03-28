@@ -741,6 +741,251 @@ pub async fn stream_chat_response(
     }
 }
 
+/// Build messages for document summarisation.
+pub(crate) fn build_summarise_messages(doc_title: &str, content_text: &str) -> Vec<AiChatMessage> {
+    vec![
+        AiChatMessage {
+            role: "system".to_string(),
+            content: "You are a technical documentation summariser. Produce a clear, concise summary of the given document. Focus on the key concepts, decisions, and actionable information. Use bullet points for clarity. Keep the summary under 300 words. Write in British English.".to_string(),
+        },
+        AiChatMessage {
+            role: "user".to_string(),
+            content: format!("Summarise the following document titled \"{}\":\n\n{}", doc_title, content_text),
+        },
+    ]
+}
+
+/// Non-streaming chat completion. Returns the full text response in one go.
+/// Used for tasks like summarisation where streaming is unnecessary.
+pub async fn complete_chat(
+    client: &reqwest::Client,
+    settings: &Settings,
+    provider: &AiProvider,
+    messages: &[AiChatMessage],
+) -> Result<String, String> {
+    match provider {
+        AiProvider::Openai => complete_openai(client, settings, messages).await,
+        AiProvider::Anthropic => complete_anthropic(client, settings, messages).await,
+        AiProvider::Gemini => complete_gemini(client, settings, messages).await,
+        AiProvider::Ollama => complete_ollama(client, settings, messages).await,
+    }
+}
+
+async fn complete_openai(
+    client: &reqwest::Client,
+    settings: &Settings,
+    messages: &[AiChatMessage],
+) -> Result<String, String> {
+    let api_key = settings
+        .openai_api_key
+        .as_ref()
+        .ok_or("OpenAI API key not configured")?;
+
+    let body = serde_json::json!({
+        "model": "gpt-4o",
+        "messages": messages,
+    });
+
+    let resp = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("OpenAI request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("OpenAI API error ({}): {}", status, text));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
+
+    json["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No content in OpenAI response".to_string())
+}
+
+async fn complete_anthropic(
+    client: &reqwest::Client,
+    settings: &Settings,
+    messages: &[AiChatMessage],
+) -> Result<String, String> {
+    let api_key = settings
+        .anthropic_api_key
+        .as_ref()
+        .ok_or("Anthropic API key not configured")?;
+
+    let system_msg = messages
+        .iter()
+        .find(|m| m.role == "system")
+        .map(|m| m.content.clone());
+
+    let chat_messages: Vec<serde_json::Value> = messages
+        .iter()
+        .filter(|m| m.role != "system")
+        .map(|m| {
+            serde_json::json!({
+                "role": m.role,
+                "content": m.content,
+            })
+        })
+        .collect();
+
+    let mut body = serde_json::json!({
+        "model": settings.anthropic_model(),
+        "max_tokens": 4096,
+        "messages": chat_messages,
+    });
+
+    if let Some(sys) = system_msg {
+        body["system"] = serde_json::Value::String(sys);
+    }
+
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Anthropic request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Anthropic API error ({}): {}", status, text));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Anthropic response: {}", e))?;
+
+    json["content"][0]["text"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No content in Anthropic response".to_string())
+}
+
+async fn complete_gemini(
+    client: &reqwest::Client,
+    settings: &Settings,
+    messages: &[AiChatMessage],
+) -> Result<String, String> {
+    let api_key = settings
+        .gemini_api_key
+        .as_ref()
+        .ok_or("Gemini API key not configured")?;
+
+    let system_instruction = messages
+        .iter()
+        .find(|m| m.role == "system")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+    let user_prompt = messages
+        .iter()
+        .filter(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let body = serde_json::json!({
+        "systemInstruction": {
+            "parts": [{ "text": system_instruction }]
+        },
+        "contents": [{
+            "role": "user",
+            "parts": [{ "text": user_prompt }]
+        }]
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        settings.gemini_model(),
+        api_key
+    );
+
+    let resp = client
+        .post(url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Gemini request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Gemini API error ({}): {}", status, text));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Gemini response: {}", e))?;
+
+    json["candidates"][0]["content"]["parts"][0]["text"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No content in Gemini response".to_string())
+}
+
+async fn complete_ollama(
+    client: &reqwest::Client,
+    settings: &Settings,
+    messages: &[AiChatMessage],
+) -> Result<String, String> {
+    let base_url = settings
+        .ollama_base_url
+        .as_deref()
+        .unwrap_or("http://localhost:11434");
+
+    let ollama_messages: Vec<serde_json::Value> = messages
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "role": m.role,
+                "content": m.content,
+            })
+        })
+        .collect();
+
+    let body = serde_json::json!({
+        "model": "llama3",
+        "messages": ollama_messages,
+        "stream": false,
+    });
+
+    let resp = client
+        .post(format!("{}/api/chat", base_url))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Ollama request failed: {}. Is Ollama running?", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Ollama API error ({}): {}", status, text));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+
+    json["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No content in Ollama response".to_string())
+}
+
 async fn stream_openai(
     client: &reqwest::Client,
     app: &AppHandle,
