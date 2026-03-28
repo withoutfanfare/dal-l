@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, nextTick, onMounted, onBeforeUnmount, defineComponent, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { open } from '@tauri-apps/plugin-shell'
 import type { Document } from '@/lib/types'
@@ -7,7 +7,19 @@ import { sanitiseHtml } from '@/lib/sanitise'
 import { useToastStack } from '@stuntrocket/ui'
 import { useProjects } from '@/composables/useProjects'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
-import { SImageLightbox } from '@stuntrocket/ui'
+// SImageLightbox stub — will be replaced when @stuntrocket/ui exports it
+const SImageLightbox = defineComponent({
+  props: { open: Boolean, src: String, alt: String },
+  emits: ['close'],
+  setup(props, { emit }) {
+    return () => props.open
+      ? h('div', {
+          class: 'fixed inset-0 z-50 flex items-center justify-center bg-black/80',
+          onClick: () => emit('close'),
+        }, [h('img', { src: props.src, alt: props.alt, class: 'max-h-[90vh] max-w-[90vw] object-contain' })])
+      : null
+  },
+})
 
 const props = defineProps<{
   document: Document
