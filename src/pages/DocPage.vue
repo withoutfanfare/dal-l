@@ -20,10 +20,11 @@ import RelatedDocuments from '@/components/content/RelatedDocuments.vue'
 import DocumentSummaryPanel from '@/components/content/DocumentSummary.vue'
 import { useDocSummary } from '@/composables/useDocSummary'
 import { buildDeepLink, docSlugWithoutCollection } from '@/lib/deepLinks'
+import { findCollectionById } from '@/lib/collectionLookup'
 
 const route = useRoute()
 const router = useRouter()
-const { activeCollection, setActiveCollection } = useCollections()
+const { collections, setActiveCollection } = useCollections()
 const { previousDoc, nextDoc } = useSequentialNavigation()
 const { activeProjectId } = useProjects()
 const { ensureLoaded, toggleBookmark, isBookmarked, byDocSlug, removeBookmark } = useBookmarks()
@@ -49,9 +50,10 @@ const breadcrumbSegments = computed<BreadcrumbSegment[]>(() => {
 
   const crumbs: BreadcrumbSegment[] = []
 
-  if (activeCollection.value) {
+  const documentCollection = findCollectionById(collections.value, doc.collection_id)
+  if (documentCollection) {
     crumbs.push({
-      label: activeCollection.value.name,
+      label: documentCollection.name,
       to: `/${doc.collection_id}`,
     })
   }

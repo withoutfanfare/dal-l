@@ -1,6 +1,6 @@
 # Dalīl — Public-Readiness TODO
 
-> Companion to [`../Tauri Apps - Public Readiness Plan.md`](../Tauri%20Apps%20-%20Public%20Readiness%20Plan.md).
+> Companion checklist derived from the local Tauri Apps Public Readiness Plan.
 > Every item below is transcribed from that report — see **Source coverage** at the bottom to confirm nothing was dropped.
 
 | | |
