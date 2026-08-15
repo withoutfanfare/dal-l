@@ -1,5 +1,9 @@
 # dalīl
 
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" alt="dalīl app icon" width="144" height="144">
+</p>
+
 Desktop knowledge app for viewing engineering handbooks and project documentation.
 
 ## Quick start

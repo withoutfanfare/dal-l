@@ -88,3 +88,19 @@ The database is bundled as a Tauri resource. In dev mode, `db.rs` reads from the
 Core tables: `collections`, `documents`, `tags`, `document_tags`, `navigation_tree`
 Search: `documents_fts` (FTS5 virtual table)
 RAG: `chunks`, `chunk_embeddings`, `chunks_fts`
+
+## Versioning (all Tauri apps)
+
+**Every ship bumps the version.** Never build and install without one — an app
+whose version never changes cannot be told apart from the copy already
+installed, and timestamps are not evidence.
+
+`/tauri-ship` owns the procedure and is the single source of truth; do not
+duplicate its steps here. In short: the version lives in `src-tauri/tauri.conf.json`,
+`src-tauri/Cargo.toml`, `package.json` **and** `src-tauri/Cargo.lock` — all four
+must match. Bump, commit as `chore(release): v<x.y.z>`, tag `v<x.y.z>`, then
+verify the install by comparing the bundle's `CFBundleShortVersionString`
+against `tauri.conf.json`.
+
+Patch for fixes, minor for a new user-visible feature, major for a breaking
+change to on-disk data or a published contract.
