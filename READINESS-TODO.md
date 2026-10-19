@@ -37,7 +37,7 @@ _None for Dalīl_ (history and working tree clean).
 
 ## P1 — Blockers before publicising (gating)
 - [ ] **Add LICENSE** to repo root — decision §8.1 (default MIT). Set `license`/`author` in `package.json`. (report §6.1, §9 P1.1)
-- [ ] **Finish env-var fallback in `dalil.config.ts`** — currently hardcodes `/Users/dannyharding/Herd/scooda-current/project/engineering-handbook/`; `process.env.DALIL_HANDBOOK_PATH` half-wired — complete it. **Functionally breaking.** (report §6.6, §7 dalil)
+- [ ] **Finish env-var fallback in `dalil.config.ts`** — currently hardcodes `/path/to/engineering-handbook/`; `process.env.DALIL_HANDBOOK_PATH` half-wired — complete it. **Functionally breaking.** (report §6.6, §7 dalil)
 - [ ] **Solve `@stuntrocket/ui` distribution** — pending §8.2 (default publish to npm). (report §6.2, §9 P1.2)
 
 ## P2 — Security hardening
@@ -49,7 +49,7 @@ _None for Dalīl_ (history and working tree clean).
 
 ## P3 — Polish & privacy presentation
 - [ ] **Bundle-ID decision** — `com.withoutfanfare.dalil` → unified scheme (default `co.stuntrocket.dalil`). ⚠️ decide **before** notarisation. (report §6.5, §8.3, §9 P3.1)
-- [ ] **Scrub `/Users/dannyharding/...`** from docs. (report §6.6, §7 dalil)
+- [ ] **Scrub `/Users/you/...`** from docs. (report §6.6, §7 dalil)
 - [ ] **Improve README** (currently ⚠️). (report §9 P3.4)
 - [ ] **Add privacy statement** to README (report Appendix F). (report §9 P3.5)
 - [ ] **Add `SECURITY.md`** (report Appendix G). (report §9 P3.6)
@@ -65,7 +65,7 @@ Maps **every Dalīl mention in the main report** to a row above (all copied ✅)
 | §6.2 | clean-clone blocker (portfolio-wide) | P1 | ✅ |
 | §6.4 | permissive capabilities: shell execute/spawn/open, store:*, process, open regex `(/.+)$` | P2 | ✅ |
 | §6.5 | bundle id `com.withoutfanfare.dalil` | P3 | ✅ |
-| §6.6 | `dalil.config.ts` hardcoded `/Users/dannyharding/Herd/…` — **functionally breaking**; env fallback half-wired | P1 | ✅ |
+| §6.6 | `dalil.config.ts` hardcoded `/Users/you/Herd/…` — **functionally breaking**; env fallback half-wired | P1 | ✅ |
 | §6.7 | no secret-scanning CI | P2 | ✅ |
 | §7 Dalil | history clean; signing key via GitHub Secret (safe); updater public minisign key; mask_key(); connect-src https: broad; discrete args; hardcoded SVG innerHTML; fixes list | scorecard + P1/P2 | ✅ |
 | §8.1/§8.2/§8.3 | licence / UI / bundle-id decisions | P1/P3 | ✅ |

@@ -136,7 +136,7 @@
 
 #### H-15: Hardcoded absolute path in `dalil.config.ts`
 - **File:** `dalil.config.ts:9`
-- **Description:** The collection source path is hardcoded to `/Users/dannyharding/Herd/scooda-worktrees/documentation-tidy-up/project/engineering-handbook/`. This will fail on any other machine or CI.
+- **Description:** The collection source path is hardcoded to `/path/to/engineering-handbook/`. This will fail on any other machine or CI.
 - **Impact:** Build fails for any other developer or CI environment.
 - **Recommendation:** Use an environment variable with a fallback, or a path relative to the project root.
 - **Effort:** S

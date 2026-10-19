@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    # macOS avoids installing the Linux WebKit libraries Tauri needs.
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # The app bundles a generated handbook database; the build only checks
+      # the file exists, so an empty placeholder is enough for tests.
+      - name: Add placeholder handbook database
+        working-directory: .
+        run: touch dalil.db
+      - name: Build
+        run: cargo build --locked
+      - name: Test
+        run: cargo test --locked
